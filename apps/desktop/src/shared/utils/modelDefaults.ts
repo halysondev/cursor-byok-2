@@ -4,3 +4,23 @@ export const defaultCustomHeaders = {
 };
 
 export const defaultCustomHeadersText = JSON.stringify(defaultCustomHeaders, null, 2);
+
+export const defaultEffortOptions = ["low", "medium", "high", "xhigh", "max"];
+
+export const defaultContextOptions = ["200k", "356k", "800k", "1m"];
+
+/** Matches the server's parse_token_count: accepts 200k / 1m / bare numbers. */
+export function parseTokenCount(value: string): number | null {
+  const match = /^(\d+)([km])?$/i.exec(value.trim());
+  if (!match) return null;
+  const unit = match[2]?.toLowerCase();
+  const multiplier = unit === "k" ? 1_000 : unit === "m" ? 1_000_000 : 1;
+  return Number(match[1]) * multiplier;
+}
+
+/** Matches the server's format_token_count. */
+export function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000 && tokens % 1_000_000 === 0) return `${tokens / 1_000_000}m`;
+  if (tokens >= 1_000 && tokens % 1_000 === 0) return `${tokens / 1_000}k`;
+  return String(tokens);
+}

@@ -216,52 +216,56 @@ struct DefaultModelNudgeDataResponse {
 }
 
 const CLI_LOCAL_MODEL_API_KEY: &str = "cursor-byok-local";
-
-const CONTEXTS: [(&str, &str); 5] = [
-    ("200k", "200K"),
-    ("356k", "356K"),
-    ("500k", "500K"),
-    ("800k", "800K"),
-    ("1m", "1M"),
-];
-const EFFORTS: [(&str, &str); 5] = [
-    ("low", "Low"),
-    ("medium", "Medium"),
-    ("high", "High"),
-    ("xhigh", "Extra High"),
-    ("max", "Max"),
-];
 const DEFAULT_CONTEXT: &str = "200k";
 
-fn configured_context(context_window_tokens: Option<u64>) -> Option<(String, String)> {
-    let tokens = context_window_tokens?;
-    CONTEXTS
-        .into_iter()
-        .find(|(value, _)| parse_token_count(value) == Some(tokens))
-        .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
-        .or_else(|| Some((tokens.to_string(), format_token_count(tokens))))
+fn context_options(model: &ModelConfig) -> Vec<(String, String)> {
+    let configured = model.context_window_tokens;
+    let mut contexts =
+        Vec::with_capacity(model.context_options.len() + usize::from(configured.is_some()));
+    if let Some(tokens) = configured {
+        match model
+            .context_options
+            .iter()
+            .find(|value| parse_token_count(value) == Some(tokens))
+        {
+            // A named option matching the configured window leads the list as-is.
+            Some(value) => contexts.push((value.clone(), display_token_count(value))),
+            // Without a matching named option the window is exposed as a bare token count.
+            None => contexts.push((tokens.to_string(), format_token_count(tokens))),
+        }
+    }
+    for value in &model.context_options {
+        if configured.is_some_and(|tokens| parse_token_count(value) == Some(tokens)) {
+            continue;
+        }
+        contexts.push((value.clone(), display_token_count(value)));
+    }
+    contexts
 }
 
-fn context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> {
-    let configured = configured_context(context_window_tokens);
-    let mut contexts =
-        Vec::with_capacity(CONTEXTS.len() + if configured.is_some() { 1 } else { 0 });
-    // The configured context leads the list: once configured it takes
-    // priority, so the picker surfaces it first and Cursor defaults to it.
-    if let Some(context) = configured.as_ref() {
-        contexts.push(context.clone());
+fn display_token_count(value: &str) -> String {
+    parse_token_count(value)
+        .map(format_token_count)
+        .unwrap_or_else(|| value.to_owned())
+}
+
+fn effort_options(model: &ModelConfig) -> Vec<(String, String)> {
+    model
+        .effort_options
+        .iter()
+        .map(|value| (value.clone(), effort_display_name(value)))
+        .collect()
+}
+
+fn effort_display_name(value: &str) -> String {
+    match value {
+        "low" => "Low".into(),
+        "medium" => "Medium".into(),
+        "high" => "High".into(),
+        "xhigh" => "Extra High".into(),
+        "max" => "Max".into(),
+        _ => value.into(),
     }
-    contexts.extend(
-        CONTEXTS
-            .into_iter()
-            .filter(|(value, _)| {
-                configured
-                    .as_ref()
-                    .is_none_or(|(configured_value, _)| configured_value.as_str() != *value)
-            })
-            .map(|(value, display_name)| (value.to_owned(), display_name.to_owned())),
-    );
-    contexts
 }
 
 pub async fn available_models(
@@ -476,23 +480,21 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
 }
 
 fn available_model(model: &ModelConfig) -> AvailableModel {
-    let contexts = context_options(model.context_window_tokens);
-    let default_context_name = configured_context(model.context_window_tokens)
-        .map(|(_, display_name)| display_name)
-        .unwrap_or_else(|| "200K".into());
+    let contexts = context_options(model);
+    let efforts = effort_options(model);
     let context_token_limit = model
         .context_window_tokens
         .map(|tokens| tokens.min(i32::MAX as u64) as i32);
+    let default_context_name = default_context_option(&contexts)
+        .map(|(_, display_name)| display_name.clone())
+        .unwrap_or_else(|| "200K".into());
     let tooltip = model_tooltip(model, &default_context_name);
     let variants = model_variants(
         &model.model_hash,
         &model.display_name,
         &tooltip,
         &contexts,
-        configured_context(model.context_window_tokens)
-            .map(|(value, _)| value)
-            .unwrap_or_else(|| DEFAULT_CONTEXT.to_owned()),
-        true,
+        &efforts,
     );
     let legacy_slugs = variants
         .iter()
@@ -508,6 +510,7 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         supports_images: Some(true),
         supports_max_mode: Some(true),
         context_token_limit,
+        // BYOK models advertise a single context window; max mode shares the same limit.
         context_token_limit_for_max_mode: context_token_limit,
         client_display_name: Some(model.display_name.clone()),
         server_model_name: Some(model.model_hash.clone()),
@@ -518,7 +521,7 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts, true),
+        parameter_definitions: model_parameters(&contexts, &efforts),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -548,9 +551,43 @@ fn provider_host(base_url: &str) -> String {
         .unwrap_or_else(|| base_url.trim().into())
 }
 
+/// The fixed Effort axis for plugin models (plugin descriptors have no configurable effort_options).
+const PLUGIN_EFFORTS: [(&str, &str); 5] = [
+    ("low", "Low"),
+    ("medium", "Medium"),
+    ("high", "High"),
+    ("xhigh", "Extra High"),
+    ("max", "Max"),
+];
+
+/// The fixed Context axis for plugin models (plugin descriptors have no configurable context_options).
+fn plugin_context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> {
+    const CONTEXTS: [(&str, &str); 5] = [
+        ("200k", "200K"),
+        ("356k", "356K"),
+        ("500k", "500K"),
+        ("800k", "800K"),
+        ("1m", "1M"),
+    ];
+    let mut contexts = CONTEXTS
+        .into_iter()
+        .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
+        .collect::<Vec<_>>();
+    if let Some(tokens) = context_window_tokens {
+        let value = tokens.to_string();
+        let duplicate = contexts
+            .iter()
+            .any(|(existing, _)| parse_token_count(existing) == Some(tokens));
+        if !duplicate {
+            contexts.insert(0, (value, format_token_count(tokens)));
+        }
+    }
+    contexts
+}
+
 fn model_parameters(
     contexts: &[(String, String)],
-    thinking: bool,
+    efforts: &[(String, String)],
 ) -> Vec<ModelParameterDefinition> {
     let mut parameters = vec![ModelParameterDefinition {
         id: "context".into(),
@@ -570,7 +607,7 @@ fn model_parameters(
         }),
         is_cycleable_by_hotkey: Some(false),
     }];
-    if thinking {
+    if !efforts.is_empty() {
         parameters.push(ModelParameterDefinition {
             id: "reasoning".into(),
             name: "Effort".into(),
@@ -578,11 +615,11 @@ fn model_parameters(
             parameter_type: Some(ModelParameterType {
                 boolean_parameter: None,
                 enum_parameter: Some(EnumParameter {
-                    values: EFFORTS
-                        .into_iter()
+                    values: efforts
+                        .iter()
                         .map(|(value, display_name)| EnumParameterValue {
-                            value: value.into(),
-                            display_name: Some(display_name.into()),
+                            value: value.clone(),
+                            display_name: Some(display_name.clone()),
                         })
                         .collect(),
                 }),
@@ -616,29 +653,38 @@ fn model_parameters(
     parameters
 }
 
+/// The variant Cursor pre-selects: the 200k tier when offered, otherwise the first
+/// option (the configured window leads the list, so it wins when 200k is absent).
+fn default_context_option(contexts: &[(String, String)]) -> Option<&(String, String)> {
+    contexts
+        .iter()
+        .find(|(value, _)| value == DEFAULT_CONTEXT)
+        .or_else(|| contexts.first())
+}
+
 fn model_variants(
     name: &str,
     display_name: &str,
     tooltip: &TooltipData,
     contexts: &[(String, String)],
-    default_context: String,
-    thinking: bool,
+    efforts: &[(String, String)],
 ) -> Vec<ModelVariant> {
-    // Non-thinking models have no Effort axis, so the variant grid reduces to Context × Fast.
-    let efforts: &[Option<(&str, &str)>] = if thinking {
-        &[
-            Some(EFFORTS[0]),
-            Some(EFFORTS[1]),
-            Some(EFFORTS[2]),
-            Some(EFFORTS[3]),
-            Some(EFFORTS[4]),
-        ]
+    let default_context = default_context_option(contexts).map(|(value, _)| value.as_str());
+    let default_effort = efforts
+        .iter()
+        .find(|(value, _)| value == "high")
+        .or_else(|| efforts.first())
+        .map(|(value, _)| value.as_str());
+    // Models without an Effort axis (non-thinking plugin models) reduce the
+    // variant grid to Context × Fast.
+    let effort_axis = if efforts.is_empty() {
+        vec![None]
     } else {
-        &[None]
+        efforts.iter().map(Some).collect::<Vec<_>>()
     };
-    let mut variants = Vec::with_capacity(contexts.len() * efforts.len() * 2);
+    let mut variants = Vec::with_capacity(contexts.len() * effort_axis.len() * 2);
     for (context, context_name) in contexts {
-        for effort in efforts {
+        for effort in &effort_axis {
             for fast in [false, true] {
                 variants.push(model_variant(
                     name,
@@ -646,9 +692,10 @@ fn model_variants(
                     tooltip,
                     context,
                     context_name,
-                    &default_context,
                     *effort,
                     fast,
+                    default_context,
+                    default_effort,
                 ));
             }
         }
@@ -663,12 +710,13 @@ fn model_variant(
     tooltip: &TooltipData,
     context: &str,
     context_name: &str,
-    default_context: &str,
-    effort: Option<(&str, &str)>,
+    effort: Option<&(String, String)>,
     fast: bool,
+    default_context: Option<&str>,
+    default_effort: Option<&str>,
 ) -> ModelVariant {
     let mut suffix = Vec::with_capacity(3);
-    if context != default_context {
+    if Some(context) != default_context {
         suffix.push(context_name);
     }
     if let Some((_, effort_name)) = effort {
@@ -685,8 +733,11 @@ fn model_variant(
             "{display_name} <span style=\"color: var(--cursor-text-tertiary);\">{suffix}</span>"
         )
     };
-    let is_default =
-        context == default_context && !fast && effort.is_none_or(|(effort, _)| effort == "high");
+    let is_default = Some(context) == default_context
+        && !fast
+        && effort.map_or(default_effort.is_none(), |(effort, _)| {
+            Some(effort.as_str()) == default_effort
+        });
     let mut parameter_values = vec![ModelParameterValue {
         id: "context".into(),
         value: context.into(),
@@ -694,7 +745,7 @@ fn model_variant(
     if let Some((effort, _)) = effort {
         parameter_values.push(ModelParameterValue {
             id: "reasoning".into(),
-            value: effort.into(),
+            value: effort.clone(),
         });
     }
     parameter_values.push(ModelParameterValue {
@@ -738,15 +789,19 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     let tooltip = TooltipData {
         markdown_content: model.description.clone(),
     };
-    // Effort and context tiers are provided uniformly by the host, consistent with built-in models; plugins no longer declare them.
-    let contexts = context_options(None);
+    // Effort and context tiers are provided uniformly by the host, consistent with
+    // built-in models; plugins no longer declare them.
+    let contexts = plugin_context_options(None);
+    let efforts = PLUGIN_EFFORTS
+        .into_iter()
+        .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
+        .collect::<Vec<_>>();
     let variants = model_variants(
         &model.id,
         &model.display_name,
         &tooltip,
         &contexts,
-        DEFAULT_CONTEXT.to_owned(),
-        true,
+        &efforts,
     );
     let legacy_slugs = variants
         .iter()
@@ -772,7 +827,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts, true),
+        parameter_definitions: model_parameters(&contexts, &efforts),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -822,26 +877,7 @@ fn usable_model(model: &ModelConfig) -> agent::ModelDetails {
 
 #[cfg(test)]
 mod tests {
-    use super::{context_options, CONTEXTS};
-
-    #[test]
-    fn configured_context_leads_and_dedupes_the_options() {
-        // A configured window that matches a known tier moves that tier first.
-        let options = context_options(Some(200_000));
-        assert_eq!(options[0], ("200k".into(), "200K".into()));
-        assert_eq!(options.iter().filter(|(v, _)| v == "200k").count(), 1);
-
-        // A configured window outside the known tiers is prepended as its own entry.
-        let options = context_options(Some(272_000));
-        assert_eq!(options[0], ("272000".into(), "272K".into()));
-        assert_eq!(options[1], ("200k".into(), "200K".into()));
-        assert_eq!(options.len(), CONTEXTS.len() + 1);
-
-        // No configuration: the standard tiers only.
-        let options = context_options(None);
-        assert_eq!(options.len(), CONTEXTS.len());
-        assert_eq!(options[0], ("200k".into(), "200K".into()));
-    }
+    use axum::body::{to_bytes, Bytes};
 
     use super::*;
     use crate::model::{ModelType, OPENAI_CHAT_ENDPOINT};
@@ -860,6 +896,8 @@ mod tests {
             tooltip_data: "Local Model".into(),
             model_id: "upstream-model".into(),
             reasoning_effort: None,
+            effort_options: vec![],
+            context_options: vec![],
             openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
             openai_extra_params_enabled: false,
             openai_extra_params: serde_json::json!({}),
@@ -954,5 +992,234 @@ mod tests {
             ..model()
         }]);
         assert!(default_model_details(&none, &[]).is_none());
+    }
+
+    #[test]
+    fn configured_context_leads_and_dedupes_the_options() {
+        let context_options = vec!["200k".to_owned(), "356k".to_owned(), "1m".to_owned()];
+
+        // A configured window that matches a named option moves that option first.
+        let options = super::context_options(&ModelConfig {
+            context_window_tokens: Some(200_000),
+            context_options: context_options.clone(),
+            ..model()
+        });
+        assert_eq!(options[0], ("200k".into(), "200K".into()));
+        assert_eq!(options.iter().filter(|(v, _)| v == "200k").count(), 1);
+
+        // A configured window outside the named options is prepended as a bare token count.
+        let options = super::context_options(&ModelConfig {
+            context_window_tokens: Some(272_000),
+            context_options: context_options.clone(),
+            ..model()
+        });
+        assert_eq!(options[0], ("272000".into(), "272K".into()));
+        assert_eq!(options[1], ("200k".into(), "200K".into()));
+        assert_eq!(options.len(), context_options.len() + 1);
+
+        // No configuration: the named options only.
+        let options = super::context_options(&ModelConfig {
+            context_window_tokens: None,
+            context_options: context_options.clone(),
+            ..model()
+        });
+        assert_eq!(options.len(), context_options.len());
+        assert_eq!(options[0], ("200k".into(), "200K".into()));
+    }
+
+    #[test]
+    fn maps_byok_model_to_cursor_catalog_fields() {
+        let model = ModelConfig {
+            model_hash: "33ceed20".into(),
+            sort_order: 0,
+            display_name: "DeepSeek V4 Flash".into(),
+            group_name: None,
+            enabled: true,
+            model_type: ModelType::OpenAi,
+            base_url: "https://example.com/v1/responses".into(),
+            use_full_url: true,
+            api_key: "secret".into(),
+            tooltip_data: "DeepSeek V4 Flash".into(),
+            model_id: "deepseek-v4-flash".into(),
+            reasoning_effort: None,
+            effort_options: vec!["low".into(), "high".into()],
+            context_options: vec!["272k".into(), "1m".into()],
+            openai_endpoint: "/v1/responses".into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: Some(272_000),
+            max_completion_tokens: None,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+            created_at_ms: 0,
+            updated_at_ms: 0,
+        };
+
+        let mapped = available_model(&model);
+        assert_eq!(mapped.name, "33ceed20");
+        assert!(mapped.default_on);
+        assert_eq!(mapped.supports_agent, Some(true));
+        assert_eq!(mapped.degradation_status, Some(0));
+        assert_eq!(mapped.supports_thinking, Some(true));
+        assert_eq!(mapped.supports_images, Some(true));
+        assert_eq!(mapped.supports_max_mode, Some(true));
+        assert_eq!(mapped.context_token_limit, Some(272_000));
+        assert_eq!(mapped.context_token_limit_for_max_mode, Some(272_000));
+        assert_eq!(mapped.supports_non_max_mode, Some(true));
+        assert_eq!(mapped.supports_plan_mode, Some(true));
+        assert_eq!(mapped.supports_sandboxing, Some(true));
+        assert_eq!(mapped.supports_cmd_k, Some(false));
+        assert_eq!(
+            mapped.client_display_name.as_deref(),
+            Some("DeepSeek V4 Flash")
+        );
+        assert_eq!(mapped.server_model_name.as_deref(), Some("33ceed20"));
+        assert_eq!(mapped.named_model_section_index, Some(1));
+        assert_eq!(
+            mapped
+                .tooltip_data
+                .as_ref()
+                .and_then(|tooltip| tooltip.markdown_content.as_deref()),
+            Some("**Default context:** 272K  \nDeepSeek V4 Flash")
+        );
+        assert_eq!(mapped.vendor_name.as_deref(), Some("cursor"));
+        assert_eq!(mapped.parameter_definitions.len(), 3);
+        let context = mapped
+            .parameter_definitions
+            .iter()
+            .find(|parameter| parameter.id == "context")
+            .unwrap();
+        let context_values = context
+            .parameter_type
+            .as_ref()
+            .unwrap()
+            .enum_parameter
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .map(|value| value.value.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(context_values, ["272k", "1m"]);
+        let reasoning = mapped
+            .parameter_definitions
+            .iter()
+            .find(|parameter| parameter.id == "reasoning")
+            .unwrap();
+        let reasoning_values = reasoning
+            .parameter_type
+            .as_ref()
+            .unwrap()
+            .enum_parameter
+            .as_ref()
+            .unwrap()
+            .values
+            .iter()
+            .map(|value| value.value.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(reasoning_values, ["low", "high"]);
+        assert_eq!(mapped.variants.len(), 8);
+        assert_eq!(mapped.legacy_slugs.len(), 8);
+        assert_eq!(mapped.model_picker_badges.len(), 1);
+        assert_eq!(mapped.model_picker_badges[0].label, "example.com");
+        assert!(!mapped.model_picker_badges[0].dismiss_on_selection);
+        let default = mapped
+            .variants
+            .iter()
+            .find(|variant| variant.is_default_non_max_config == Some(true))
+            .unwrap();
+        assert_eq!(
+            default.variant_string_representation.as_deref(),
+            Some("33ceed20[context=272k,reasoning=high,fast=false]")
+        );
+        assert_eq!(
+            default
+                .parameter_values
+                .iter()
+                .map(|parameter| parameter.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["context", "reasoning", "fast"]
+        );
+        assert_eq!(mapped.vendor.unwrap().display_name, "Cursor");
+        assert!(usable_model(&model).thinking_details.is_some());
+    }
+
+    #[tokio::test]
+    async fn appends_models_without_reencoding_official_fields() {
+        // Unknown field 99 = 7 stands in for every official field this service does not know.
+        let official = Bytes::from_static(&[0x98, 0x06, 0x07]);
+        let addition = AvailableModelsAddition {
+            model_names: vec!["f246010a".into()],
+            models: Vec::new(),
+        }
+        .encode_to_vec();
+        let response = merge_response(
+            proxy::BufferedResponse {
+                status: axum::http::StatusCode::OK,
+                headers: Default::default(),
+                body: official.clone(),
+            },
+            addition.clone(),
+        )
+        .unwrap();
+        let merged = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&merged[..official.len()], official.as_ref());
+        assert_eq!(&merged[official.len()..], addition);
+    }
+
+    #[tokio::test]
+    async fn updates_connect_length_when_catalog_is_framed() {
+        let official = [0x98, 0x06, 0x07];
+        let mut framed = BytesMut::new();
+        framed.put_u8(0);
+        framed.put_u32(official.len() as u32);
+        framed.extend_from_slice(&official);
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(axum::http::header::CONTENT_LENGTH, framed.len().into());
+        let response = merge_response(
+            proxy::BufferedResponse {
+                status: axum::http::StatusCode::OK,
+                headers,
+                body: framed.freeze(),
+            },
+            vec![0x0a, 0x01, b'x'],
+        )
+        .unwrap();
+        assert_eq!(response.headers()[axum::http::header::CONTENT_LENGTH], "11");
+        let merged = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(u32::from_be_bytes(merged[1..5].try_into().unwrap()), 6);
+        assert_eq!(&merged[5..8], &official);
+    }
+
+    #[tokio::test]
+    async fn returns_local_catalog_when_upstream_rejects_request() {
+        let local = AvailableModelsAddition {
+            model_names: vec!["f246010a".into()],
+            models: Vec::new(),
+        }
+        .encode_to_vec();
+        let response = merge_response(
+            proxy::BufferedResponse {
+                status: axum::http::StatusCode::UNAUTHORIZED,
+                headers: Default::default(),
+                body: Bytes::from_static(b"not logged in"),
+            },
+            local.clone(),
+        )
+        .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            response.headers()[axum::http::header::CONTENT_TYPE],
+            "application/proto"
+        );
+        assert_eq!(
+            to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+            local
+        );
     }
 }

@@ -1,5 +1,3 @@
-
-
 export type ModelType = "openai" | "anthropic";
 
 export interface Model {
@@ -15,6 +13,8 @@ export interface Model {
   tooltip_data: string;
   model_id: string;
   reasoning_effort: string | null;
+  effort_options: string[];
+  context_options: string[];
   openai_endpoint: string;
   openai_extra_params_enabled: boolean;
   openai_extra_params: Record<string, unknown>;
@@ -42,6 +42,8 @@ export interface ModelInput {
   tooltip_data: string;
   model_id: string;
   reasoning_effort: string | null;
+  effort_options: string[];
+  context_options: string[];
   openai_endpoint: string;
   openai_extra_params_enabled: boolean;
   openai_extra_params: Record<string, unknown>;

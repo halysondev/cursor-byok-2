@@ -367,7 +367,8 @@ fn map_finish(value: &str, has_tools: bool) -> FinishReason {
         "length" => FinishReason::Length,
         "content_filter" => FinishReason::Stop,
         // Observed tool calls outrank ordinary or unknown stop labels because
-        // OpenAI-compatible servers commonly emit tools with `stop`.
+        // OpenAI-compatible servers commonly emit tools with `stop`, and the run
+        // rejects a finish reason that contradicts them.
         _ if has_tools => FinishReason::ToolUse,
         _ => FinishReason::Stop,
     }

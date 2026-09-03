@@ -672,7 +672,7 @@ fn prost_value(value: &prost_types::Value) -> Value {
     }
 }
 
-fn xml(value: &str) -> String {
+pub(crate) fn xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('"', "&quot;")

@@ -145,7 +145,7 @@ fn project_tool_round(
             .map(|(message_id, result)| ProjectedMessage {
                 message_id,
                 role: Role::Tool,
-                content: ProjectedContent::ToolResult(normalized_tool_result(&result)),
+                content: ProjectedContent::ToolResult(project_tool_result(&result)),
             }),
     );
     Ok(Some((output, cursor)))
@@ -167,7 +167,7 @@ fn project_message(message: &CanonicalMessage) -> ProjectedMessage {
             calls: tool_calls.iter().map(normalized_tool_call).collect(),
         },
         MessageContent::ToolResult(result) => {
-            ProjectedContent::ToolResult(normalized_tool_result(result))
+            ProjectedContent::ToolResult(project_tool_result(result))
         }
     };
     ProjectedMessage {
@@ -183,18 +183,13 @@ fn normalized_tool_call(call: &ToolCallContent) -> ToolCallContent {
     call
 }
 
-fn normalized_tool_result(result: &ToolResultContent) -> ToolResultContent {
-    let mut result = project_tool_result(result);
-    result.name = normalize_tool_name(&result.name);
-    result
-}
-
 /// Bounds an oversized tool result in the provider-visible projection only —
 /// the canonical message keeps the full content, so a narrower re-run can
 /// still inspect what was omitted.
 fn project_tool_result(result: &ToolResultContent) -> ToolResultContent {
     let mut projected = result.clone();
-    let label = format!("{} tool", result.name);
+    projected.name = normalize_tool_name(&projected.name);
+    let label = format!("{} tool", projected.name);
     projected.content = truncate_edges(&label, &projected.content, TOOL_RESULT_CONTENT_LIMIT);
     for part in &mut projected.provider_parts {
         if let ContentPart::Text { text } = part {
@@ -237,6 +232,7 @@ mod tests {
         };
         assert_eq!(calls[0].name, "multi_tool_use_parallel");
     }
+
     #[test]
     fn oversized_tool_results_are_bounded_only_in_provider_projection() {
         let original = format!("HEAD{}TAIL", "x".repeat(1024 * KIB));

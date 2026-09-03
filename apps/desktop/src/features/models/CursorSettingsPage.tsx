@@ -19,6 +19,7 @@ import { addIcon } from "../../shared/ui/icons";
 import { useMessage } from "../../shared/ui/message";
 import { PageActions } from "../../shell/PageActions";
 import { appStore, useAppStore } from "../../shared/store/appStore";
+import { parseTokenCount } from "../../shared/utils/modelDefaults";
 
 export function CursorSettingsPage() {
   const { models, cursorHarness, cursorBusy, plugins } = useAppStore();
@@ -401,7 +402,7 @@ export function CursorSettingsPage() {
 
 function modelInput(model: Model): ModelInput {
   const { model_hash: _hash, created_at_ms: _created, updated_at_ms: _updated, ...input } = model;
-  return input;
+  return { ...input, effort_options: [...model.effort_options], context_options: [...model.context_options] };
 }
 
 /** Returns the value when every model in the group agrees, otherwise null (an empty form field keeps each model's current value). */
@@ -424,10 +425,13 @@ function draftInput(draft: CursorModelDraft): ModelInput {
     anthropic_extra_params: parseObject(draft.anthropicExtraParamsText, "Anthropic extra parameters"),
   };
   if (!model.display_name || !model.base_url || !model.api_key || !model.tooltip_data || !model.model_id) throw new Error("Server address or complete request URL, API Key, model name, display name, and note are required");
-  for (const [label, value] of [["Context window tokens", model.context_window_tokens], ["Maximum output tokens", model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens], ["Thinking budget tokens", model.thinking_budget_tokens]] as const) {
+  for (const [label, value] of [["Maximum output tokens", model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens], ["Thinking budget tokens", model.thinking_budget_tokens]] as const) {
     if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) throw new Error(`${label} must be an integer greater than 0`);
   }
-  return model;
+  if (!model.effort_options.length) throw new Error("At least one effort option is required");
+  if (!model.context_options.length || model.context_options.some((value) => !/^\d+[km]?$/i.test(value))) throw new Error("Context options must be comma-separated token counts, such as 200k, 1m");
+  // The context window is no longer a standalone input: the first Context option is the default.
+  return { ...model, context_window_tokens: parseTokenCount(model.context_options[0]) };
 }
 
 function parseHeaders(text: string): Record<string, string> {

@@ -13,8 +13,8 @@ const SUBJECT: &str = "cursor-local-user";
 const MEMBERSHIP_TYPE: &str = "ultra";
 const SUBSCRIPTION_STATUS: &str = "active";
 
-pub async fn inject_if_missing() -> Result<()> {
-    inject_if_missing_at(&state_db_path()?).await
+pub async fn ensure_local_account() -> Result<()> {
+    ensure_local_account_at(&state_db_path()?).await
 }
 
 fn state_db_path() -> Result<PathBuf> {
@@ -38,7 +38,7 @@ fn state_db_path() -> Result<PathBuf> {
     }
 }
 
-async fn inject_if_missing_at(path: &Path) -> Result<()> {
+async fn ensure_local_account_at(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -57,24 +57,34 @@ async fn inject_if_missing_at(path: &Path) -> Result<()> {
         .bind("cursorAuth/accessToken")
         .fetch_optional(&mut connection)
         .await?;
-    if account.is_some_and(|row| {
+    let has_access_token = account.is_some_and(|row| {
         row.try_get::<String, _>("value")
             .is_ok_and(|value| !value.trim().is_empty() && value != token)
-    }) {
-        return Ok(());
+    });
+
+    let mut transaction = connection.begin().await?;
+    if !has_access_token {
+        let token = local_token()?;
+        let values = [
+            ("cursorAuth/accessToken", token.as_str()),
+            ("cursorAuth/refreshToken", token.as_str()),
+            ("cursorAuth/cachedEmail", EMAIL),
+            ("cursorAuth/cachedSignUpType", SIGN_UP_TYPE),
+            ("cursorAuth/stripeMembershipAuthId", SUBJECT),
+        ];
+        for (key, value) in values {
+            sqlx::query("INSERT OR REPLACE INTO ItemTable(key, value) VALUES(?, ?)")
+                .bind(key)
+                .bind(value)
+                .execute(&mut *transaction)
+                .await?;
+        }
     }
 
-    let values = [
-        ("cursorAuth/accessToken", token.as_str()),
-        ("cursorAuth/refreshToken", token.as_str()),
-        ("cursorAuth/cachedEmail", EMAIL),
-        ("cursorAuth/cachedSignUpType", SIGN_UP_TYPE),
-        ("cursorAuth/stripeMembershipAuthId", SUBJECT),
+    for (key, value) in [
         ("cursorAuth/stripeMembershipType", MEMBERSHIP_TYPE),
         ("cursorAuth/stripeSubscriptionStatus", SUBSCRIPTION_STATUS),
-    ];
-    let mut transaction = connection.begin().await?;
-    for (key, value) in values {
+    ] {
         sqlx::query("INSERT OR REPLACE INTO ItemTable(key, value) VALUES(?, ?)")
             .bind(key)
             .bind(value)
@@ -82,22 +92,20 @@ async fn inject_if_missing_at(path: &Path) -> Result<()> {
             .await?;
     }
     transaction.commit().await?;
-    tracing::info!(
-        email = EMAIL,
-        subject = SUBJECT,
-        "injected local Cursor account"
-    );
+    if !has_access_token {
+        tracing::info!(
+            email = EMAIL,
+            subject = SUBJECT,
+            "injected local Cursor account"
+        );
+    }
     Ok(())
 }
 
 pub(crate) fn is_local_cursor_authorization(authorization: &str) -> bool {
     authorization
         .strip_prefix("Bearer ")
-        .is_some_and(is_local_cursor_token)
-}
-
-fn is_local_cursor_token(token: &str) -> bool {
-    local_token().is_ok_and(|local| local == token)
+        .is_some_and(|token| local_token().is_ok_and(|local| local == token))
 }
 
 pub(super) fn local_token() -> Result<String> {
@@ -112,64 +120,155 @@ pub(super) fn local_token() -> Result<String> {
     }))?);
     Ok(format!("{header}.{payload}.{SUBJECT}"))
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn only_the_injected_identity_is_a_local_authorization() {
+        let token = local_token().unwrap();
+        assert!(is_local_cursor_authorization(&format!("Bearer {token}")));
+        assert!(!is_local_cursor_authorization(&token));
+        assert!(!is_local_cursor_authorization("Bearer real-account-token"));
+        assert!(!is_local_cursor_authorization("Bearer "));
+    }
+
     #[tokio::test]
-    async fn reinjection_repairs_local_membership_cache() {
+    async fn reinjection_repairs_local_identity_without_replacing_real_identity() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("state.vscdb");
-        inject_if_missing_at(&path).await.unwrap();
-
-        let mut connection = SqliteConnection::connect(&format!("sqlite:{}", path.display()))
+        ensure_local_account_at(&path).await.unwrap();
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&path);
+        let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
+        sqlx::query("DELETE FROM ItemTable WHERE key = 'cursorAuth/stripeMembershipAuthId'")
+            .execute(&mut connection)
             .await
             .unwrap();
-        sqlx::query("UPDATE ItemTable SET value = 'free' WHERE key = ?")
+        ensure_local_account_at(&path).await.unwrap();
+        let id: String = sqlx::query_scalar("SELECT CAST(value AS TEXT) FROM ItemTable WHERE key = 'cursorAuth/stripeMembershipAuthId'").fetch_one(&mut connection).await.unwrap();
+        assert_eq!(id, SUBJECT);
+        for (key, value) in [
+            ("cursorAuth/accessToken", "real-token"),
+            ("cursorAuth/cachedEmail", "real@example.com"),
+            ("cursorAuth/stripeMembershipAuthId", "real-user"),
+        ] {
+            sqlx::query("UPDATE ItemTable SET value = ? WHERE key = ?")
+                .bind(value)
+                .bind(key)
+                .execute(&mut connection)
+                .await
+                .unwrap();
+        }
+        ensure_local_account_at(&path).await.unwrap();
+        for (key, expected) in [
+            ("cursorAuth/accessToken", "real-token"),
+            ("cursorAuth/cachedEmail", "real@example.com"),
+            ("cursorAuth/stripeMembershipAuthId", "real-user"),
+        ] {
+            let value: String =
+                sqlx::query_scalar("SELECT CAST(value AS TEXT) FROM ItemTable WHERE key = ?")
+                    .bind(key)
+                    .fetch_one(&mut connection)
+                    .await
+                    .unwrap();
+            assert_eq!(value, expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn injects_the_local_account_only_when_missing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.vscdb");
+
+        ensure_local_account_at(&path).await.unwrap();
+
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&path);
+        let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
+        let values = sqlx::query("SELECT key, CAST(value AS TEXT) AS value FROM ItemTable")
+            .fetch_all(&mut connection)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.get::<String, _>("key"), row.get::<String, _>("value")))
+            .collect::<std::collections::HashMap<_, _>>();
+        let token = &values["cursorAuth/accessToken"];
+        assert_eq!(values["cursorAuth/refreshToken"], *token);
+        assert_eq!(values["cursorAuth/cachedEmail"], EMAIL);
+        assert_eq!(values["cursorAuth/cachedSignUpType"], SIGN_UP_TYPE);
+        assert_eq!(values["cursorAuth/stripeMembershipType"], MEMBERSHIP_TYPE);
+        assert_eq!(
+            values["cursorAuth/stripeSubscriptionStatus"],
+            SUBSCRIPTION_STATUS
+        );
+        let payload = token.split('.').nth(1).unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap();
+        assert_eq!(payload["sub"], SUBJECT);
+        assert_eq!(payload["email"], EMAIL);
+        assert_eq!(payload["exp"], 4070908800_u64);
+
+        sqlx::query("UPDATE ItemTable SET value = 'existing-token' WHERE key = ?")
+            .bind("cursorAuth/accessToken")
+            .execute(&mut connection)
+            .await
+            .unwrap();
+        drop(connection);
+        ensure_local_account_at(&path).await.unwrap();
+
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&path);
+        let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
+        let token: String =
+            sqlx::query_scalar("SELECT CAST(value AS TEXT) FROM ItemTable WHERE key = ?")
+                .bind("cursorAuth/accessToken")
+                .fetch_one(&mut connection)
+                .await
+                .unwrap();
+        assert_eq!(token, "existing-token");
+    }
+
+    #[tokio::test]
+    async fn refreshes_ultra_metadata_for_an_existing_cursor_account() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.vscdb");
+
+        ensure_local_account_at(&path).await.unwrap();
+
+        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&path);
+        let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
+        sqlx::query("UPDATE ItemTable SET value = ? WHERE key = ?")
+            .bind("existing-token")
+            .bind("cursorAuth/accessToken")
+            .execute(&mut connection)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE ItemTable SET value = ? WHERE key = ?")
+            .bind("free")
             .bind("cursorAuth/stripeMembershipType")
             .execute(&mut connection)
             .await
             .unwrap();
         sqlx::query("DELETE FROM ItemTable WHERE key = ?")
-            .bind("cursorAuth/stripeMembershipAuthId")
+            .bind("cursorAuth/stripeSubscriptionStatus")
             .execute(&mut connection)
             .await
             .unwrap();
         drop(connection);
 
-        inject_if_missing_at(&path).await.unwrap();
+        ensure_local_account_at(&path).await.unwrap();
 
-        let mut connection = SqliteConnection::connect(&format!("sqlite:{}", path.display()))
+        let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
+        let values = sqlx::query("SELECT key, CAST(value AS TEXT) AS value FROM ItemTable")
+            .fetch_all(&mut connection)
             .await
-            .unwrap();
-        let membership_type: String =
-            sqlx::query_scalar("SELECT CAST(value AS TEXT) FROM ItemTable WHERE key = ?")
-                .bind("cursorAuth/stripeMembershipType")
-                .fetch_one(&mut connection)
-                .await
-                .unwrap();
-        let membership_auth_id: String =
-            sqlx::query_scalar("SELECT CAST(value AS TEXT) FROM ItemTable WHERE key = ?")
-                .bind("cursorAuth/stripeMembershipAuthId")
-                .fetch_one(&mut connection)
-                .await
-                .unwrap();
-
-        assert_eq!(membership_type, MEMBERSHIP_TYPE);
-        assert_eq!(membership_auth_id, SUBJECT);
-    }
-
-    #[test]
-    fn recognizes_only_the_injected_cursor_token() {
-        let token = local_token().unwrap();
-        assert!(is_local_cursor_token(&token));
-        assert!(is_local_cursor_authorization(&format!("Bearer {token}")));
-        assert!(!is_local_cursor_authorization(&token));
-        assert!(!is_local_cursor_authorization(
-            "Bearer official-cursor-token"
-        ));
-        assert!(!is_local_cursor_token("official-cursor-token"));
-        assert!(!is_local_cursor_token(""));
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.get::<String, _>("key"), row.get::<String, _>("value")))
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(values["cursorAuth/accessToken"], "existing-token");
+        assert_eq!(values["cursorAuth/stripeMembershipType"], MEMBERSHIP_TYPE);
+        assert_eq!(
+            values["cursorAuth/stripeSubscriptionStatus"],
+            SUBSCRIPTION_STATUS
+        );
     }
 }

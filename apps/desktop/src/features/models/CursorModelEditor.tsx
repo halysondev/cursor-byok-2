@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import type { ModelInput, ModelType } from "../../shared/api";
-import { defaultCustomHeadersText } from "../../shared/utils/modelDefaults";
+import { defaultContextOptions, defaultCustomHeadersText, defaultEffortOptions, formatTokenCount, parseTokenCount } from "../../shared/utils/modelDefaults";
 import { modelPresets, presetEndpoint, trimTrailingSlash, type ModelPreset } from "../../shared/utils/modelPresets";
 import { Button } from "../../shared/ui/Button";
 import { Checkbox } from "../../shared/ui/Checkbox";
@@ -11,6 +11,10 @@ import { Switch } from "../../shared/ui/Switch";
 import { claudeIcon, openAiIcon } from "../../shared/ui/icons";
 import { CursorPresetChips } from "./CursorPresetChips";
 import styles from "./CursorSettings.module.scss";
+
+function parseOptions(value: string): string[] {
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+}
 
 export type CursorModelDraft = {
   providerId: string;
@@ -33,6 +37,8 @@ export const emptyCursorModelDraft = (): CursorModelDraft => ({
     tooltip_data: "",
     model_id: "",
     reasoning_effort: null,
+    effort_options: [...defaultEffortOptions],
+    context_options: [...defaultContextOptions],
     openai_endpoint: "/v1/responses",
     openai_extra_params_enabled: false,
     openai_extra_params: {},
@@ -99,6 +105,9 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
   const applyPreset = (preset: ModelPreset) => {
     const endpoint = presetEndpoint(preset, draft.model.type);
     const first = preset.models[0];
+    // The context window is no longer a standalone input: the preset window becomes the first
+    // Context option (the first option is saved as the default).
+    const presetContext = first?.context_window_tokens ?? null;
     // Switching to a different provider clears the API key (keys are not interchangeable across
     // providers); switching protocols within the same provider keeps it.
     const currentBase = trimTrailingSlash(draft.model.base_url.trim());
@@ -117,7 +126,9 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
         model_id: first?.model_id ?? draft.model.model_id,
         display_name: first?.display_name ?? draft.model.display_name,
         tooltip_data: !draft.model.tooltip_data.trim() || draft.model.tooltip_data === "Notes" ? preset.name : draft.model.tooltip_data,
-        context_window_tokens: first?.context_window_tokens ?? draft.model.context_window_tokens,
+        context_options: presetContext !== null
+          ? [formatTokenCount(presetContext), ...draft.model.context_options.filter((value) => parseTokenCount(value) !== presetContext)]
+          : draft.model.context_options,
         ...(draft.model.type === "openai"
           ? { max_completion_tokens: first?.max_output_tokens ?? draft.model.max_completion_tokens }
           : { anthropic_max_tokens: first?.max_output_tokens ?? draft.model.anthropic_max_tokens }),
@@ -163,7 +174,8 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
       <FormField label={"Display name"} hint={"Used only for display and does not change the model name sent to the model service."}> <TextInput placeholder={"For example: Primary model"} value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>
       <FormField className={styles.fullWidth} label={"Notes"} hint={"Shown in the Cursor model description."}> <TextInput placeholder={"Enter model notes"} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} /></FormField>
 
-      <FormField label={"Context window tokens"} hint={"Custom model context length. Once configured, the custom option takes priority."}> <TextInput type="number" min={1} step={1} placeholder={"e.g. 272000"} value={draft.model.context_window_tokens ?? ""} onChange={(event) => setModel({ context_window_tokens: numberValue(event.target.value) })} /></FormField>
+      <FormField label={"Effort options"} hint={"Comma-separated effort values supported by this model."}> <TextInput aria-label={"Effort options"} value={draft.model.effort_options.join(", ")} onChange={(event) => setModel({ effort_options: parseOptions(event.target.value) })} /></FormField>
+      <FormField label={"Context options"} hint={"Comma-separated context values supported by this model, such as 200k, 1m."}> <TextInput aria-label={"Context options"} value={draft.model.context_options.join(", ")} onChange={(event) => setModel({ context_options: parseOptions(event.target.value) })} /></FormField>
       {draft.model.type === "openai" ? <>
         <FormField label={"Maximum output tokens"} hint={"Custom model context length. Once configured, the custom option takes priority."}> <TextInput type="number" min={1} step={1} placeholder={"e.g. 272000"} value={draft.model.max_completion_tokens ?? ""} onChange={(event) => setModel({ max_completion_tokens: numberValue(event.target.value) })} /></FormField>
         <FormField label={"Reasoning effort"}> <Select ariaLabel={"Reasoning effort"} value={draft.model.reasoning_effort ?? ""} options={effortOptions(true)} onChange={(value) => setModel({ reasoning_effort: value || null })} /></FormField>
