@@ -219,6 +219,13 @@ const KIMI_AUTH: &[(&str, &str)] = &[
         )),
     ),
     (
+        "token.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/token.ts"
+        )),
+    ),
+    (
         "resources.ts",
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
