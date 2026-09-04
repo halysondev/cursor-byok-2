@@ -1,4 +1,5 @@
-import type { JsonValue, PluginContext } from "cursor-byok:plugin";
+import type { JsonValue, NetworkResponse, PluginContext } from "cursor-byok:plugin";
+import { refreshBundle } from "./token.ts";
 import type {
   ResourceDraft,
   ResourceImportFile,
@@ -125,6 +126,35 @@ export function accountData(resource: ResourceSnapshot): AccountData {
   };
 }
 
+/** Refresh ahead when the token has less lifetime left than this, so a session does not start with a 401 every time. */
+const EXPIRY_SKEW_MS = 60_000;
+
+/** Expiry time of the access token; returns 0 (no known expiry) when the JWT exp claim is missing. */
+export function tokenExpiryMs(data: AccountData): number {
+  return (number(decodeJwtPayload(data.accessToken)?.exp) ?? 0) * 1000;
+}
+
+/** Whether the token is near expiry; a missing exp counts as not expiring, leaving the 401 fallback refresh to handle it. */
+export function tokenExpiring(data: AccountData, nowMs = Date.now()): boolean {
+  const expiry = tokenExpiryMs(data);
+  return expiry !== 0 && expiry <= nowMs + EXPIRY_SKEW_MS;
+}
+
+/** Exchanges the refresh_token for a new token; returns null when the refresh was rejected and a re-login is required. */
+export async function refreshAccessToken(
+  data: AccountData,
+  context: PluginContext,
+): Promise<AccountData | null> {
+  if (!data.refreshToken) return null;
+  const bundle = await refreshBundle(data.refreshToken, context);
+  if (!bundle) return null;
+  return {
+    ...data,
+    accessToken: bundle.accessToken,
+    refreshToken: bundle.refreshToken ?? data.refreshToken,
+  };
+}
+
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
@@ -238,23 +268,25 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   };
 }
 
-/** Validates the credential first, then queries subscription quota; a quota failure does not affect the credential verdict. */
+/** Validates the credential (refreshing the token first when rejected), then queries subscription quota; a quota failure does not affect the credential verdict. */
 export async function refreshAccount(
   resource: ResourceSnapshot,
   context: PluginContext,
 ): Promise<ResourcePatch> {
-  const data = accountData(resource);
-  const response = await context.network.fetch(MODELS_URL, {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${data.accessToken}`,
-    },
-  });
-  if (response.status === 401 || response.status === 403) {
-    return {
-      state: { status: "invalid", message: "Kimi authorization expired; sign in again" },
-    };
+  let data = accountData(resource);
+  let rotated = false;
+  let response = await checkCredentials(data, context);
+  if (isRejected(response.status) && data.refreshToken) {
+    const refreshed = await refreshAccessToken(data, context);
+    if (!refreshed) {
+      return { state: { status: "invalid", message: EXPIRED_MESSAGE } };
+    }
+    data = refreshed;
+    rotated = true;
+    response = await checkCredentials(data, context);
+  }
+  if (isRejected(response.status)) {
+    return { state: { status: "invalid", message: EXPIRED_MESSAGE } };
   }
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`Kimi credential check failed (HTTP ${response.status}): ${response.body}`);
@@ -274,11 +306,32 @@ export async function refreshAccount(
   } catch {
     // Quota is best-effort: stay ready when the query fails.
   }
-  if (!quota) return { state: { status: "ready" } };
+  if (!quota) {
+    return rotated ? { privateData: data as unknown as JsonValue } : { state: { status: "ready" } };
+  }
   return {
     privateData: { ...data, quota } as unknown as JsonValue,
     state: quotaState(quota),
   };
+}
+
+const EXPIRED_MESSAGE = "Kimi authorization expired; sign in again";
+
+function isRejected(status: number): boolean {
+  return status === 401 || status === 403;
+}
+
+function checkCredentials(
+  data: AccountData,
+  context: PluginContext,
+): Promise<NetworkResponse> {
+  return context.network.fetch(MODELS_URL, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${data.accessToken}`,
+    },
+  });
 }
 
 function firstText(source: Record<string, unknown>, keys: string[]): string | null {

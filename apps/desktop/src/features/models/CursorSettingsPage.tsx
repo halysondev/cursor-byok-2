@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, type Model, type ModelInput } from "../../shared/api";
+import { api, type Model, type ModelInput, type PluginModelDescriptor, type PluginModelOverrideInput } from "../../shared/api";
 import { CursorCaGate, CursorCaProvider, CursorModelGate, CursorModelProvider } from "./CursorGates";
 import { CursorModelCards, cursorModelGroups, cursorPluginModelGroups, groupToggleKey, type CursorModelGroup, type CursorModelGrouping, type CursorPluginModelGroup } from "./CursorModelCards";
 import { CursorModelEditor, emptyCursorModelDraft, type CursorModelDraft } from "./CursorModelEditor";
+import { PluginModelEditor, type PluginModelEditorHandle } from "./PluginModelEditor";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
 import { PageContent } from "../../shell/layout/PageContent";
@@ -23,10 +23,12 @@ import { parseTokenCount } from "../../shared/utils/modelDefaults";
 
 export function CursorSettingsPage() {
   const { models, cursorHarness, cursorBusy, plugins } = useAppStore();
-  const navigate = useNavigate();
   const message = useMessage();
   const [draft, setDraft] = useState<CursorModelDraft | null>(null);
   const [editing, setEditing] = useState<Model | null>(null);
+  const [pluginEditing, setPluginEditing] = useState<PluginModelDescriptor | null>(null);
+  const [pluginSaving, setPluginSaving] = useState(false);
+  const pluginEditorRef = useRef<PluginModelEditorHandle>(null);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [discovering, setDiscovering] = useState(false);
   const [caCommand, setCaCommand] = useState<string | null>(null);
@@ -128,6 +130,18 @@ export function CursorSettingsPage() {
       }
     } catch (cause) {
       message(errorText(cause));
+    }
+  };
+  const savePluginOverride = async (input: PluginModelOverrideInput) => {
+    setPluginSaving(true);
+    try {
+      await api.setPluginModelOverride(input);
+      await appStore.refreshPlugins();
+      setPluginEditing(null);
+    } catch (cause) {
+      message(errorText(cause));
+    } finally {
+      setPluginSaving(false);
     }
   };
   const cancelModelTest = async (modelHash: string) => {
@@ -304,7 +318,7 @@ export function CursorSettingsPage() {
     onDuplicate={(model) => void duplicateModel(model)}
     onDelete={setDeleting}
     onTestPluginModel={(model) => void testModel({ model_hash: model.id, display_name: model.displayName })}
-    onPluginSettings={() => navigate("/plugins")}
+    onEditPluginModel={setPluginEditing}
     onReorder={reorderModels}
     onGroupSettings={openGroupSettings}
     onSetBuiltinGroupEnabled={(group, enabled) => void setBuiltinGroupEnabled(group, enabled)}
@@ -375,10 +389,11 @@ export function CursorSettingsPage() {
     >
       <p>{"Disabling this will remove Cursor's local proxy configuration. If you need to sign in to an official account, you usually do not need to disable it. You can sign in directly because BYOK models and official-account models now work together seamlessly. Do you want to continue disabling and clearing the proxy configuration?"}</p>
     </ConfirmDialog>
-    <Modal fullHeight open={draft !== null} title={editing ? "Edit model" : "Add model"} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={"Save"} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? "Processing…" : editorTesting ? "Cancel test" : "Save and test"}</button>}>
+    <Modal fullHeight open={draft !== null || pluginEditing !== null} title={editing || pluginEditing ? "Edit model" : "Add model"} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={cursorBusy || savingAndTesting || pluginSaving} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); setPluginEditing(null); }} onSubmit={() => { if (draft) void save(); else pluginEditorRef.current?.save(); }} submitLabel={"Save"} secondaryAction={draft ? <button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? "Processing…" : editorTesting ? "Cancel test" : "Save and test"}</button> : undefined}>
       {draft && <>
         <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} onChange={setDraft} onDiscover={discover} />
       </>}
+      {pluginEditing && <PluginModelEditor ref={pluginEditorRef} model={pluginEditing} busy={pluginSaving} onSave={(input) => void savePluginOverride(input)} />}
     </Modal>
     <ConfirmDialog open={caCommand !== null} title={"Install local CA"} cancelLabel={"Close"} confirmLabel={"Open terminal"} onCancel={() => setCaCommand(null)} onConfirm={openCaTerminal}>
       <div className={styles.editor}><strong>{"Authorization is required to install the certificate"}</strong><span>{"The install command has been copied. Click “Open terminal”, paste it into the terminal, and enter your password when prompted."}</span><pre className={styles.command}>{caCommand}</pre></div>

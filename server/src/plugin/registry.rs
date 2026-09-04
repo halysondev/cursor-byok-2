@@ -192,6 +192,12 @@ impl PluginRegistry {
             .disabled_plugin_models()
             .await
             .unwrap_or_default();
+        let overrides = self
+            .inner
+            .store
+            .plugin_model_overrides()
+            .await
+            .unwrap_or_default();
         let mut models = Vec::new();
         for entry in self.entries(&executable).await {
             for provider in &entry.definition.providers {
@@ -213,10 +219,13 @@ impl PluginRegistry {
                         model,
                     );
                     if disabled_models.contains(&descriptor.id) {
-                        None
-                    } else {
-                        Some(descriptor)
+                        return None;
                     }
+                    let descriptor = match overrides.get(&descriptor.id) {
+                        Some(over) => descriptor.with_override(over),
+                        None => descriptor,
+                    };
+                    Some(descriptor)
                 }));
             }
         }
@@ -237,13 +246,18 @@ impl PluginRegistry {
             .into_iter()
             .find(|model| model.id == upstream_id)
             .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
-        Ok(PluginModelDescriptor::new(
+        let mut descriptor = PluginModelDescriptor::new(
             plugin_id,
             &entry.manifest.name,
             &entry.icon,
             provider,
             &stored,
-        ))
+        );
+        let overrides = self.inner.store.plugin_model_overrides().await?;
+        if let Some(over) = overrides.get(&descriptor.id) {
+            descriptor = descriptor.with_override(over);
+        }
+        Ok(descriptor)
     }
 
     pub async fn plan_model(&self, model_id: &str) -> Result<PluginInvocationPlan> {
@@ -254,7 +268,9 @@ impl PluginRegistry {
             .await
             .unwrap_or_default();
         if disabled_models.contains(model_id) {
-            return Err(Error::Provider(format!("plugin model '{model_id}' is disabled")));
+            return Err(Error::Provider(format!(
+                "plugin model '{model_id}' is disabled"
+            )));
         }
         let model = self.model_descriptor(model_id).await?;
         let request_url = format!("plugin://{}/{}", model.plugin_id, model.provider_id);
@@ -1264,6 +1280,7 @@ impl PluginRegistry {
 
     async fn descriptor(&self, entry: &PluginEntry, executable: &Path) -> PluginDescriptor {
         let plugin_id = &entry.manifest.id;
+        let overrides = self.inner.store.plugin_model_overrides().await.unwrap_or_default();
         let mut providers = Vec::new();
         for provider in &entry.definition.providers {
             let stored = self
@@ -1285,13 +1302,17 @@ impl PluginRegistry {
                 models: stored
                     .iter()
                     .map(|model| {
-                        PluginModelDescriptor::new(
+                        let descriptor = PluginModelDescriptor::new(
                             plugin_id,
                             &entry.manifest.name,
                             &entry.icon,
                             provider,
                             model,
-                        )
+                        );
+                        match overrides.get(&descriptor.id) {
+                            Some(over) => descriptor.with_override(over),
+                            None => descriptor,
+                        }
                     })
                     .collect(),
             });
@@ -1534,9 +1555,19 @@ impl PluginRegistry {
         }
 
         let get_priority = |r: &ResourceRecord| -> u8 {
-            let label = r.private_data.get("quota").and_then(|q| q.get("planLabel")).and_then(|l| l.as_str()).unwrap_or("");
+            let label = r
+                .private_data
+                .get("quota")
+                .and_then(|q| q.get("planLabel"))
+                .and_then(|l| l.as_str())
+                .unwrap_or("");
             let lower = label.to_lowercase();
-            if label.contains("🔥") || lower.contains("pro") || lower.contains("ultra") || lower.contains("premium") || lower.contains("advanced") {
+            if label.contains("🔥")
+                || lower.contains("pro")
+                || lower.contains("ultra")
+                || lower.contains("premium")
+                || lower.contains("advanced")
+            {
                 0
             } else {
                 1
@@ -1567,7 +1598,9 @@ impl PluginRegistry {
         plugin_id: &str,
         resource_type: &str,
     ) -> Result<ResourceRecord> {
-        let mut candidates = self.select_resources(plugin_id, resource_type, None).await?;
+        let mut candidates = self
+            .select_resources(plugin_id, resource_type, None)
+            .await?;
         Ok(candidates.remove(0))
     }
 

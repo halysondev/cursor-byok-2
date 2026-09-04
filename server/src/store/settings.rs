@@ -1,5 +1,5 @@
 //! Persists application settings.
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,7 @@ const PRICING_SETTINGS_KEY: &str = "token_pricing";
 const SUBAGENT_ROUTING_KEY: &str = "subagent_routing";
 const DISABLED_PLUGIN_MODELS_KEY: &str = "disabled_plugin_models";
 const DISABLED_PLUGIN_ACCOUNTS_KEY: &str = "disabled_plugin_accounts";
+const PLUGIN_MODEL_OVERRIDES_KEY: &str = "plugin_model_overrides";
 
 /// Embedded default system prompt for commit message generation.
 pub const DEFAULT_COMMIT_PROMPT: &str = include_str!("../../prompt/cursor/commit/prompt.md");
@@ -243,6 +244,49 @@ fn read_proxy_settings(value: &str) -> ProxySettingsSecret {
         tracing::warn!(%error, "ignoring unreadable outbound proxy settings");
         ProxySettingsSecret::default()
     })
+}
+
+/// A user's manual override for a single plugin model; empty/None fields restore the
+/// plugin defaults.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PluginModelOverride {
+    pub display_name: Option<String>,
+    pub tooltip: Option<String>,
+    pub effort_options: Option<Vec<String>>,
+    pub context_options: Option<Vec<String>>,
+    pub max_output_tokens: Option<u64>,
+}
+
+impl PluginModelOverride {
+    /// Normalizes an override: trims whitespace and folds empty strings, empty arrays,
+    /// and 0 into None; a fully-default result means "no override" and the store drops
+    /// the entry.
+    pub fn normalized(self) -> Self {
+        let text = |value: Option<String>| {
+            value
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        };
+        let options = |values: Option<Vec<String>>| {
+            values
+                .map(|values| {
+                    values
+                        .into_iter()
+                        .map(|value| value.trim().to_owned())
+                        .filter(|value| !value.is_empty())
+                        .collect::<Vec<_>>()
+                })
+                .filter(|values| !values.is_empty())
+        };
+        Self {
+            display_name: text(self.display_name),
+            tooltip: text(self.tooltip),
+            effort_options: options(self.effort_options),
+            context_options: options(self.context_options),
+            max_output_tokens: self.max_output_tokens.filter(|tokens| *tokens > 0),
+        }
+    }
 }
 
 impl Store {
@@ -641,13 +685,53 @@ impl Store {
         .await?;
         Ok(())
     }
+
+    pub async fn plugin_model_overrides(&self) -> Result<HashMap<String, PluginModelOverride>> {
+        let value = sqlx::query_scalar::<_, String>(
+            "SELECT value_json FROM service_settings WHERE setting_key = ?",
+        )
+        .bind(PLUGIN_MODEL_OVERRIDES_KEY)
+        .fetch_optional(&self.pool)
+        .await?;
+        value
+            .map(|value| serde_json::from_str(&value).map_err(Into::into))
+            .unwrap_or_else(|| Ok(HashMap::new()))
+    }
+
+    /// The override is normalized before writing; a fully-empty value deletes the model's entry (restoring the plugin defaults).
+    pub async fn set_plugin_model_override(
+        &self,
+        model_id: &str,
+        over: PluginModelOverride,
+    ) -> Result<()> {
+        // The read-modify-write is fully serialized so concurrent saves cannot clobber each other.
+        let _write = self.writes.lock().await;
+        let mut overrides = self.plugin_model_overrides().await?;
+        let over = over.normalized();
+        if over == PluginModelOverride::default() {
+            overrides.remove(model_id);
+        } else {
+            overrides.insert(model_id.to_owned(), over);
+        }
+        let value_json = serde_json::to_string(&overrides)?;
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(PLUGIN_MODEL_OVERRIDES_KEY)
+        .bind(value_json)
+        .bind(now_ms())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        read_proxy_settings, CommitSettings, ProxyMode, ProxySettingsInput, ProxySettingsSecret,
-        Store, TokenPricingSettings, DEFAULT_COMMIT_PROMPT, PROXY_SETTINGS_KEY,
+        read_proxy_settings, CommitSettings, PluginModelOverride, ProxyMode, ProxySettingsInput,
+        ProxySettingsSecret, Store, TokenPricingSettings, DEFAULT_COMMIT_PROMPT,
+        PROXY_SETTINGS_KEY,
     };
 
     /// The `outbound_proxy` row exactly as builds before the `system` -> `default`
@@ -669,6 +753,7 @@ mod tests {
         };
         assert_eq!(settings.effective_prompt(), "custom prompt");
     }
+
 
     #[test]
     fn default_proxy_mode_uses_the_default_wire_value() {
@@ -750,5 +835,43 @@ mod tests {
         assert_eq!(saved, custom);
 
         assert_eq!(store.pricing_settings().await.unwrap(), custom);
+    }
+
+    #[tokio::test]
+    async fn plugin_model_override_round_trips_and_drops_empty_entries() {
+        let store = Store::connect("sqlite::memory:").await.unwrap();
+        let model_id = "plugin:dev.example/codex/org/gpt-5";
+        assert!(store.plugin_model_overrides().await.unwrap().is_empty());
+
+        store
+            .set_plugin_model_override(
+                model_id,
+                PluginModelOverride {
+                    display_name: Some("  Kimi K2 ".into()),
+                    tooltip: Some("   ".into()),
+                    effort_options: Some(vec!["low".into(), " ".into()]),
+                    context_options: Some(Vec::new()),
+                    max_output_tokens: Some(0),
+                },
+            )
+            .await
+            .unwrap();
+        let overrides = store.plugin_model_overrides().await.unwrap();
+        assert_eq!(
+            overrides.get(model_id),
+            Some(&PluginModelOverride {
+                display_name: Some("Kimi K2".into()),
+                tooltip: None,
+                effort_options: Some(vec!["low".into()]),
+                context_options: None,
+                max_output_tokens: None,
+            })
+        );
+
+        store
+            .set_plugin_model_override(model_id, PluginModelOverride::default())
+            .await
+            .unwrap();
+        assert!(store.plugin_model_overrides().await.unwrap().is_empty());
     }
 }

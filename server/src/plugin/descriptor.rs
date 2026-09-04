@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::state::{ResourceRecord, ResourceState, StoredModel};
+use crate::store::PluginModelOverride;
 
 /// Capability summary emitted by collect.ts; contains nothing executable.
 #[derive(Clone, Debug, Deserialize)]
@@ -141,6 +142,10 @@ pub struct PluginModelDescriptor {
     pub max_output_tokens: Option<u64>,
     pub images: bool,
     pub enabled: bool,
+    /// Effective effort axis: the host defaults unless a user override replaces them entirely.
+    pub effort_options: Vec<String>,
+    /// Effective context tiers: the host defaults unless a user override replaces them entirely.
+    pub context_options: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -277,6 +282,12 @@ pub fn parse_model_id(value: &str) -> Option<(&str, &str, &str)> {
     ))
 }
 
+/// Default effort and context tier axes for plugin models; plugin descriptors do not
+/// declare them — the host provides them uniformly and a user override replaces them
+/// entirely.
+const DEFAULT_EFFORT_OPTIONS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+const DEFAULT_CONTEXT_OPTIONS: [&str; 5] = ["200k", "356k", "500k", "800k", "1m"];
+
 impl PluginModelDescriptor {
     pub fn new(
         plugin_id: &str,
@@ -298,7 +309,45 @@ impl PluginModelDescriptor {
             max_output_tokens: model.max_output_tokens,
             images: model.images,
             enabled: model.enabled,
+            effort_options: DEFAULT_EFFORT_OPTIONS
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            context_options: DEFAULT_CONTEXT_OPTIONS
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
         }
+    }
+
+    /// Merges the user override into the descriptor; None/empty keeps the default.
+    pub fn with_override(self, over: &PluginModelOverride) -> Self {
+        let mut descriptor = self;
+        if let Some(name) = over.display_name.as_deref().filter(|name| !name.is_empty()) {
+            descriptor.display_name = name.to_owned();
+        }
+        if let Some(tooltip) = &over.tooltip {
+            // tooltip is only consumed as Cursor model-hint markdown; it replaces description directly.
+            descriptor.description = Some(tooltip.clone());
+        }
+        if let Some(options) = over
+            .effort_options
+            .as_deref()
+            .filter(|options| !options.is_empty())
+        {
+            descriptor.effort_options = options.to_vec();
+        }
+        if let Some(options) = over
+            .context_options
+            .as_deref()
+            .filter(|options| !options.is_empty())
+        {
+            descriptor.context_options = options.to_vec();
+        }
+        if over.max_output_tokens.is_some_and(|tokens| tokens > 0) {
+            descriptor.max_output_tokens = over.max_output_tokens;
+        }
+        descriptor
     }
 }
 
@@ -315,5 +364,50 @@ mod tests {
         );
         assert_eq!(parse_model_id("plugin:only/one"), None);
         assert_eq!(parse_model_id("model-hash"), None);
+    }
+
+    #[test]
+    fn override_replaces_only_the_fields_it_provides() {
+        let provider = ProviderDefinition {
+            id: "codex".into(),
+            display_name: serde_json::Value::Null,
+            description: serde_json::Value::Null,
+            provider_type: "openai".into(),
+            resource_type: None,
+            has_models: true,
+        };
+        let model = StoredModel {
+            id: "gpt-5".into(),
+            display_name: "GPT-5".into(),
+            description: Some("plugin default".into()),
+            max_output_tokens: None,
+            images: false,
+            enabled: true,
+            private_data: serde_json::Value::Null,
+        };
+        let base = PluginModelDescriptor::new("dev.example", "Example", "", &provider, &model);
+
+        let merged = base.clone().with_override(&PluginModelOverride {
+            tooltip: Some("user tooltip".into()),
+            ..PluginModelOverride::default()
+        });
+        assert_eq!(merged.display_name, "GPT-5");
+        assert_eq!(merged.description.as_deref(), Some("user tooltip"));
+        assert_eq!(merged.effort_options, base.effort_options);
+        assert_eq!(merged.context_options, base.context_options);
+        assert_eq!(merged.max_output_tokens, None);
+
+        let merged = base.with_override(&PluginModelOverride {
+            display_name: Some(String::new()),
+            effort_options: Some(vec!["low".into()]),
+            context_options: Some(vec!["1m".into()]),
+            max_output_tokens: Some(65_536),
+            ..PluginModelOverride::default()
+        });
+        // An empty name does not take effect (blank normalization is the writer's job); the other fields replace the default axes wholesale.
+        assert_eq!(merged.display_name, "GPT-5");
+        assert_eq!(merged.effort_options, vec!["low"]);
+        assert_eq!(merged.context_options, vec!["1m"]);
+        assert_eq!(merged.max_output_tokens, Some(65_536));
     }
 }

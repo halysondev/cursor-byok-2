@@ -311,6 +311,20 @@
   height: 34px;
   flex: 0 0 auto;
 }
+// Read-only display value: shaped like an input but not editable.
+.staticValue {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 5px;
+}
 .urlField {
   min-width: 0;
   display: flex;

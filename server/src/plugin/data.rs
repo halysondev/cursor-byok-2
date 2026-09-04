@@ -85,9 +85,7 @@ impl PluginDataStore {
         let _guard = lock.lock().await;
         let current = match tokio::fs::read(&path).await {
             Ok(bytes) => serde_json::from_slice(&bytes)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                serde_json::Value::Null
-            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::Value::Null,
             Err(error) => {
                 return Err(Error::Config(format!(
                     "plugin data read failed at {}: {error}",
@@ -96,14 +94,12 @@ impl PluginDataStore {
             }
         };
         let next = modify(current)?;
-        self.write_locked(&path, key, &next)
-            .await
-            .map_err(|error| {
-                Error::Config(format!(
-                    "plugin data write failed at {}: {error}",
-                    path.display()
-                ))
-            })
+        self.write_locked(&path, key, &next).await.map_err(|error| {
+            Error::Config(format!(
+                "plugin data write failed at {}: {error}",
+                path.display()
+            ))
+        })
     }
 
     /// Uses synchronous IO on a blocking thread throughout: tokio's async file close is

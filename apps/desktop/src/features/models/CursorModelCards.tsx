@@ -45,14 +45,14 @@ type CursorModelCardsProps = {
   onDuplicate: (model: Model) => void;
   onDelete: (model: Model) => void;
   onTestPluginModel: (model: PluginModelDescriptor) => void;
-  onPluginSettings: (model: PluginModelDescriptor) => void;
+  onEditPluginModel: (model: PluginModelDescriptor) => void;
   onReorder: (modelHashes: string[]) => void;
   onGroupSettings: (group: CursorModelGroup) => void;
   onSetBuiltinGroupEnabled: (group: CursorModelGroup, enabled: boolean) => void;
   onSetPluginGroupEnabled: (group: CursorPluginModelGroup, enabled: boolean) => void;
 };
 
-type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "pluginGroups" | "busyGroupKey" | "onTestPluginModel" | "onPluginSettings" | "onGroupSettings" | "onSetBuiltinGroupEnabled" | "onSetPluginGroupEnabled"> & {
+type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "pluginGroups" | "busyGroupKey" | "onTestPluginModel" | "onEditPluginModel" | "onGroupSettings" | "onSetBuiltinGroupEnabled" | "onSetPluginGroupEnabled"> & {
   sortable: boolean;
 };
 
@@ -135,7 +135,7 @@ export function CursorModelCards(props: CursorModelCardsProps) {
         testing={props.testingModelHashes.has(model.id)}
         result={props.testResults.get(model.id)}
         onTest={() => props.onTestPluginModel(model)}
-        onSettings={() => props.onPluginSettings(model)}
+        onEdit={() => props.onEditPluginModel(model)}
       />)}
     </CollapsibleGroup>)}
   </div>;
@@ -211,13 +211,13 @@ function ModelListRow({ model, disabled, testing, result, onTest, onEdit, onDupl
   </div>;
 }
 
-function PluginModelRow({ model, disabled, testing, result, onTest, onSettings }: {
+function PluginModelRow({ model, disabled, testing, result, onTest, onEdit }: {
   model: PluginModelDescriptor;
   disabled: boolean;
   testing: boolean;
   result: CursorModelTestState | undefined;
   onTest: () => void;
-  onSettings: () => void;
+  onEdit: () => void;
 }) {
   return <div className={styles.modelRow}>
     <div className={styles.modelRowName}>
@@ -227,7 +227,7 @@ function PluginModelRow({ model, disabled, testing, result, onTest, onSettings }
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
       <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? "Cancel test" : "Test"} onClick={onTest} />
-      <TruncatedButton size="small" disabled={disabled} label={"Settings"} onClick={onSettings} />
+      <TruncatedButton size="small" disabled={disabled} label={"Edit"} onClick={onEdit} />
     </div>
   </div>;
 }

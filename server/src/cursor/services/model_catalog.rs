@@ -249,9 +249,8 @@ fn display_token_count(value: &str) -> String {
         .unwrap_or_else(|| value.to_owned())
 }
 
-fn effort_options(model: &ModelConfig) -> Vec<(String, String)> {
-    model
-        .effort_options
+fn effort_options(values: &[String]) -> Vec<(String, String)> {
+    values
         .iter()
         .map(|value| (value.clone(), effort_display_name(value)))
         .collect()
@@ -481,7 +480,7 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
 
 fn available_model(model: &ModelConfig) -> AvailableModel {
     let contexts = context_options(model);
-    let efforts = effort_options(model);
+    let efforts = effort_options(&model.effort_options);
     let context_token_limit = model
         .context_window_tokens
         .map(|tokens| tokens.min(i32::MAX as u64) as i32);
@@ -549,40 +548,6 @@ fn provider_host(base_url: &str) -> String {
         .ok()
         .and_then(|url| url.host_str().map(str::to_lowercase))
         .unwrap_or_else(|| base_url.trim().into())
-}
-
-/// The fixed Effort axis for plugin models (plugin descriptors have no configurable effort_options).
-const PLUGIN_EFFORTS: [(&str, &str); 5] = [
-    ("low", "Low"),
-    ("medium", "Medium"),
-    ("high", "High"),
-    ("xhigh", "Extra High"),
-    ("max", "Max"),
-];
-
-/// The fixed Context axis for plugin models (plugin descriptors have no configurable context_options).
-fn plugin_context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> {
-    const CONTEXTS: [(&str, &str); 5] = [
-        ("200k", "200K"),
-        ("356k", "356K"),
-        ("500k", "500K"),
-        ("800k", "800K"),
-        ("1m", "1M"),
-    ];
-    let mut contexts = CONTEXTS
-        .into_iter()
-        .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
-        .collect::<Vec<_>>();
-    if let Some(tokens) = context_window_tokens {
-        let value = tokens.to_string();
-        let duplicate = contexts
-            .iter()
-            .any(|(existing, _)| parse_token_count(existing) == Some(tokens));
-        if !duplicate {
-            contexts.insert(0, (value, format_token_count(tokens)));
-        }
-    }
-    contexts
 }
 
 fn model_parameters(
@@ -789,13 +754,13 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     let tooltip = TooltipData {
         markdown_content: model.description.clone(),
     };
-    // Effort and context tiers are provided uniformly by the host, consistent with
-    // built-in models; plugins no longer declare them.
-    let contexts = plugin_context_options(None);
-    let efforts = PLUGIN_EFFORTS
-        .into_iter()
-        .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
+    // Effort and context tiers come from the descriptor's effective axes (user overrides already merged).
+    let contexts = model
+        .context_options
+        .iter()
+        .map(|value| (value.clone(), display_token_count(value)))
         .collect::<Vec<_>>();
+    let efforts = effort_options(&model.effort_options);
     let variants = model_variants(
         &model.id,
         &model.display_name,
@@ -945,6 +910,8 @@ mod tests {
             max_output_tokens: None,
             images: false,
             enabled: true,
+            effort_options: vec!["low".into(), "medium".into(), "high".into()],
+            context_options: vec!["200k".into(), "1m".into()],
         });
         assert_eq!(details.model_id, "plugin:test/provider/model");
         let agent::model_details::Credentials::ApiKeyCredentials(credentials) =
