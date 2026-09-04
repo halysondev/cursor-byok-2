@@ -210,23 +210,28 @@ impl PluginRegistry {
                     .models(&entry.manifest.id, &provider.id)
                     .await
                     .unwrap_or_default();
-                models.extend(stored.iter().filter(|model| model.enabled).filter_map(|model| {
-                    let descriptor = PluginModelDescriptor::new(
-                        &entry.manifest.id,
-                        &entry.manifest.name,
-                        &entry.icon,
-                        provider,
-                        model,
-                    );
-                    if disabled_models.contains(&descriptor.id) {
-                        return None;
-                    }
-                    let descriptor = match overrides.get(&descriptor.id) {
-                        Some(over) => descriptor.with_override(over),
-                        None => descriptor,
-                    };
-                    Some(descriptor)
-                }));
+                models.extend(
+                    stored
+                        .iter()
+                        .filter(|model| model.enabled)
+                        .filter_map(|model| {
+                            let descriptor = PluginModelDescriptor::new(
+                                &entry.manifest.id,
+                                &entry.manifest.name,
+                                &entry.icon,
+                                provider,
+                                model,
+                            );
+                            if disabled_models.contains(&descriptor.id) {
+                                return None;
+                            }
+                            let descriptor = match overrides.get(&descriptor.id) {
+                                Some(over) => descriptor.with_override(over),
+                                None => descriptor,
+                            };
+                            Some(descriptor)
+                        }),
+                );
             }
         }
         models
@@ -1280,7 +1285,12 @@ impl PluginRegistry {
 
     async fn descriptor(&self, entry: &PluginEntry, executable: &Path) -> PluginDescriptor {
         let plugin_id = &entry.manifest.id;
-        let overrides = self.inner.store.plugin_model_overrides().await.unwrap_or_default();
+        let overrides = self
+            .inner
+            .store
+            .plugin_model_overrides()
+            .await
+            .unwrap_or_default();
         let mut providers = Vec::new();
         for provider in &entry.definition.providers {
             let stored = self
