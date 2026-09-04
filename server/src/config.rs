@@ -10,8 +10,6 @@ const DATA_DIR_NAME: &str = ".cursor-byok-v3";
 const COMPACTION_PROMPT_PATH: &str = "prompts/compaction.md";
 const DATABASE_FILE_NAME: &str = "cursor-byok.db";
 const GLOBAL_RULES_DIR_NAME: &str = "rules/global";
-const V0049_DATA_DIR_NAME: &str = ".cursor-local-assistant-v2";
-const V0049_CONFIG_FILE_NAME: &str = "config.yaml";
 const DEFAULT_PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
@@ -27,14 +25,6 @@ fn managed_data_dir_in(home_dir: &std::path::Path) -> Result<PathBuf> {
     #[cfg(unix)]
     fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o700))?;
     Ok(data_dir)
-}
-
-pub fn v0049_config_path() -> Result<PathBuf> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| Error::Config("cannot resolve user home directory".into()))?;
-    Ok(home_dir
-        .join(V0049_DATA_DIR_NAME)
-        .join(V0049_CONFIG_FILE_NAME))
 }
 
 pub fn compaction_prompt_path() -> Result<PathBuf> {

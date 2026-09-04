@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ProxySettings, type ProxySettingsInput, type StatisticsStorage, type StatisticsStorageScope, type TabSettings } from "../../shared/api";
 import { PageContent } from "../../shell/layout/PageContent";
-import { LegacyModelImport } from "../models/LegacyModelImport";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
 import { CommitSettingsCard } from "./CommitSettingsCard";
 import { PricingSettingsCard } from "./PricingSettingsCard";
@@ -225,17 +224,6 @@ export function SettingsPage() {
       <PricingSettingsCard />
       <SubagentSettingsCard />
       <AppLifecycleSettingsCard />
-      <LegacyModelImport>{({ busy, previewing, open }) => <TitledCard title={"Import"}>
-        <div className={styles.importRow}>
-          <div>
-            <strong>{"Legacy configuration"}</strong>
-            <small>{"Read models from the local legacy configuration. New and existing models are shown before confirmation."}</small>
-          </div>
-          <Button size="small" disabled={busy} onClick={open}>
-            {previewing ? "Reading…" : "Review and import"}
-          </Button>
-        </div>
-      </TitledCard>}</LegacyModelImport>
       <TitledCard title={"Theme"}>
         <div className={styles.themeActions}>
           {themeOptions.map(({ id }) => (

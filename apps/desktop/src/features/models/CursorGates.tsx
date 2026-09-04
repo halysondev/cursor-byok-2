@@ -29,7 +29,7 @@ export function CursorModelProvider({ children }: { children: ReactNode }) {
   return <ModelsReady.Provider value={models.length > 0 || hasConfiguredPlugin}>{children}</ModelsReady.Provider>;
 }
 
-export function CursorModelGate({ busy, previewingImport, onAdd, onImport, children }: { busy: boolean; previewingImport: boolean; onAdd: () => void; onImport: () => void; children: ReactNode }) {
+export function CursorModelGate({ busy, onAdd, children }: { busy: boolean; onAdd: () => void; children: ReactNode }) {
   const ready = useContext(ModelsReady);
   if (ready) return children;
   return <div className={styles.gate}>
@@ -37,7 +37,6 @@ export function CursorModelGate({ busy, previewingImport, onAdd, onImport, child
     <span>{"Cursor integration is active. Add a model configuration to use a BYOK model."}</span>
     <div className={styles.gateActions}>
       <button className={controls.primary} disabled={busy} onClick={onAdd}>{"Add model"}</button>
-      <button className={controls.secondary} disabled={busy} onClick={onImport}>{previewingImport ? "Reading…" : "Import legacy configuration"}</button>
     </div>
   </div>;
 }

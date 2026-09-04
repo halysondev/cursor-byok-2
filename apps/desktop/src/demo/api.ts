@@ -112,10 +112,6 @@ export function installDemoApi() {
     if (path === "/models" && method === "POST") return json(models);
     if (path === "/models/order") return json(models);
     if (path === "/models/discover") return json({ models: models.map((model) => model.model_id) });
-    if (path === "/models/import-v0049" && method === "GET") {
-      return json({ source: "demo", total: 0, new_models: 0, existing_models: 0, models: [] });
-    }
-    if (path === "/models/import-v0049") return json({ imported: 0, skipped: 0, total: 0 });
     if (/^\/models\/[^/]+\/test\/[^/]+$/.test(path) && method === "POST") {
       return json({ duration_ms: 1_284, first_valid_response_ms: 418, output_tokens: 42, tokens_per_second: 38.6, tokens_estimated: false, output: "Mock connectivity test passed." });
     }

@@ -698,10 +698,12 @@ impl Store {
             .unwrap_or_else(|| Ok(HashMap::new()))
     }
 
-    /// The override is normalized before writing; a fully-empty value deletes the model's entry (restoring the plugin defaults).
+    /// The override is normalized before writing; a fully-empty value deletes the model's
+    /// entry (restoring the plugin defaults). `id` is the full descriptor ID
+    /// (`plugin:<plugin>/<provider>/<model>`).
     pub async fn set_plugin_model_override(
         &self,
-        model_id: &str,
+        id: &str,
         over: PluginModelOverride,
     ) -> Result<()> {
         // The read-modify-write is fully serialized so concurrent saves cannot clobber each other.
@@ -709,9 +711,9 @@ impl Store {
         let mut overrides = self.plugin_model_overrides().await?;
         let over = over.normalized();
         if over == PluginModelOverride::default() {
-            overrides.remove(model_id);
+            overrides.remove(id);
         } else {
-            overrides.insert(model_id.to_owned(), over);
+            overrides.insert(id.to_owned(), over);
         }
         let value_json = serde_json::to_string(&overrides)?;
         sqlx::query(
