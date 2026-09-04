@@ -106,8 +106,8 @@ export type ProviderInvokeInput = {
 
 /**
  * `resource-error` attributes the failure to the selected resource; the host updates the
- * resource state accordingly and may (in the future) retry with a different resource when
- * no events have been emitted yet. `patch` also persists side effects of a successful call,
+ * resource state accordingly and fails over to the next candidate resource when no events
+ * have been emitted yet. `patch` also persists side effects of a successful call,
  * such as a refreshed access token.
  */
 export type ProviderResult =

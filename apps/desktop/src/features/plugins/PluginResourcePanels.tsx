@@ -140,15 +140,15 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
       <small>{"Device code"}</small>
       <button
         type="button"
-        title={begun.verificationUrlComplete || begun.verificationUrl || begun.userCode || undefined}
-        onClick={() => void copyCode((begun.verificationUrlComplete || begun.verificationUrl || begun.userCode) ?? "")}
+        title={begun.userCode ?? undefined}
+        onClick={() => void copyCode(begun.userCode ?? "")}
       >
         {begun.userCode?.startsWith("http") ? "Authorization URL" : begun.userCode}
       </button>
       <button
         type="button"
         className={styles.copy}
-        onClick={() => void copyCode((begun.verificationUrlComplete || begun.verificationUrl || begun.userCode) ?? "")}
+        onClick={() => void copyCode(begun.userCode ?? "")}
       >
         {copied ? "Copied" : "Copy"}
       </button>

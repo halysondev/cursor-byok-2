@@ -239,7 +239,7 @@ function PluginCard({ plugin, onOpen }: {
           label={"Add account"}
           onClick={() => onOpen(plugin.id, "add")}
         />
-        {configured && (
+        {(configured || accountCount > 0) && (
           <TruncatedButton
             size="small"
             label={"Manage accounts"}

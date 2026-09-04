@@ -208,6 +208,7 @@ for (const effort of ["xhigh", "max"]) {
         status: 200,
         headers: {},
         lines: (async function* () {
+          yield 'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}';
           yield "data: [DONE]";
         })(),
       };

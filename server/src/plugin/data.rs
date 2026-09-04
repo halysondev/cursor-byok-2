@@ -71,6 +71,41 @@ impl PluginDataStore {
             })
     }
 
+    /// Performs a read-modify-write under the plugin lock so concurrent refreshes and
+    /// deletes cannot overwrite each other. `modify` receives the current value (Null when
+    /// absent) and returns the new value to persist.
+    pub async fn modify(
+        &self,
+        plugin_id: &str,
+        key: &str,
+        modify: impl FnOnce(serde_json::Value) -> Result<serde_json::Value>,
+    ) -> Result<()> {
+        let path = self.path(plugin_id, key)?;
+        let lock = self.lock(plugin_id);
+        let _guard = lock.lock().await;
+        let current = match tokio::fs::read(&path).await {
+            Ok(bytes) => serde_json::from_slice(&bytes)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                serde_json::Value::Null
+            }
+            Err(error) => {
+                return Err(Error::Config(format!(
+                    "plugin data read failed at {}: {error}",
+                    path.display()
+                )));
+            }
+        };
+        let next = modify(current)?;
+        self.write_locked(&path, key, &next)
+            .await
+            .map_err(|error| {
+                Error::Config(format!(
+                    "plugin data write failed at {}: {error}",
+                    path.display()
+                ))
+            })
+    }
+
     /// Uses synchronous IO on a blocking thread throughout: tokio's async file close is
     /// deferred, so the handle may still be held by this process at replace time; writing
     /// synchronously guarantees the handle is definitely closed by then.

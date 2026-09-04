@@ -182,6 +182,58 @@ const ANTIGRAVITY_AUTH: &[(&str, &str)] = &[
     ),
 ];
 
+const KIMI_AUTH: &[(&str, &str)] = &[
+    (
+        "plugin.json",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/plugin.json"
+        )),
+    ),
+    (
+        "main.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/main.ts"
+        )),
+    ),
+    (
+        "provider.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/provider.ts"
+        )),
+    ),
+    (
+        "models.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/models.ts"
+        )),
+    ),
+    (
+        "oauth.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/oauth.ts"
+        )),
+    ),
+    (
+        "resources.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/resources.ts"
+        )),
+    ),
+    (
+        "assets/kimi.svg",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/kimi-auth/assets/kimi.svg"
+        )),
+    ),
+];
+
 const CLAUDE_AUTH: &[(&str, &str)] = &[
     (
         "plugin.json",
@@ -274,6 +326,7 @@ const PLUGINS: &[(&str, &[(&str, &str)])] = &[
     ("grok-auth", GROK_AUTH),
     ("antigravity-auth", ANTIGRAVITY_AUTH),
     ("claude-auth", CLAUDE_AUTH),
+    ("kimi-auth", KIMI_AUTH),
 ];
 
 /// Preinstalls built-in plugins into the installed directory. The manifest version is the

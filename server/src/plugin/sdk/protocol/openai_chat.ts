@@ -102,6 +102,7 @@ export function buildChatBody(call: OpenAiChatCall): Record<string, JsonValue> {
     body.reasoning_effort = call.request.reasoning.effort;
   }
   if (call.request.latency === "fast") body.service_tier = "fast";
+  if (call.request.cacheKey !== null) body.prompt_cache_key = call.request.cacheKey;
   return { ...body, ...call.extraBody };
 }
 
@@ -213,6 +214,7 @@ export async function streamOpenAiChat(
 
   let textOpen = false;
   let thinkingOpen = false;
+  let sawText = false;
   let reasoning = "";
   const tools = new Map<number, ToolState>();
   let finalUsage: ModelEvent | null = null;
@@ -258,6 +260,7 @@ export async function streamOpenAiChat(
       }
       if (!textOpen) {
         textOpen = true;
+        sawText = true;
         output.emit({ type: "text-start" });
       }
       output.emit({ type: "text-delta", text: content });
@@ -310,6 +313,12 @@ export async function streamOpenAiChat(
   }
   const reason = finish ??
     (sawDoneMarker ? (tools.size > 0 ? "tool-use" : "stop") : null);
+  // Empty-response guard: with neither content/tool calls nor usage, the
+  // upstream or gateway most likely truncated the stream; do not treat it as success.
+  const sawContent = sawText || reasoning.length > 0 || tools.size > 0;
+  if (!sawContent && finalUsage === null) {
+    throw new Error("OpenAI Chat stream returned an empty response");
+  }
   if (reason === null) {
     throw new Error("OpenAI Chat stream ended without finish_reason");
   }

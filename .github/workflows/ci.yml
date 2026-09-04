@@ -51,6 +51,9 @@ jobs:
       - name: Test Grok OAuth and reasoning behavior
         run: deno test --config server/plugins/build-in/grok-auth/deno.json server/plugins/build-in/grok-auth/
 
+      - name: Test Kimi OAuth, quota, and model behavior
+        run: deno test --config server/plugins/build-in/kimi-auth/deno.json server/plugins/build-in/kimi-auth/
+
       - name: Test plugin credential lifecycle
         env:
           DENO_TEST_EXECUTABLE: deno

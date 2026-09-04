@@ -261,8 +261,12 @@ impl PluginRegistry {
         Ok(PluginInvocationPlan { model, request_url })
     }
 
-    /// Unified Provider stream for plugin models: pick the first usable resource, execute via the Worker,
-    /// and pipe events through the same channel as built-in Providers. Future load balancing retries resources here.
+    /// Unified Provider stream for plugin models: resourced providers get an ordered
+    /// candidate list keyed on the conversation ID so a session keeps the same preferred
+    /// account; on an auth failure before any event is emitted the same account is
+    /// force-refreshed and retried once, then the next candidate takes over — as it does
+    /// directly for a resource failure. Once events have been emitted no switch happens
+    /// so the output is never duplicated.
     pub fn stream_model(
         &self,
         invocation: ModelInvocation,
@@ -282,40 +286,57 @@ impl PluginRegistry {
                 .into_iter()
                 .find(|model| model.id == upstream_id)
                 .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
-            let mut resource = match &provider.resource_type {
-                Some(resource_type) => {
-                    let record = registry.select_resource(&plugin_id, resource_type).await?;
-                    let record = registry
-                        .prepare_resource(
-                            &entry,
-                            &executable,
-                            resource_type,
-                            record,
-                            None,
-                        )
-                        .await?;
-                    Some((resource_type.clone(), record))
-                }
-                None => None,
+            let candidates: Vec<(String, ResourceRecord)> = match &provider.resource_type {
+                Some(resource_type) => registry
+                    .select_resources(&plugin_id, resource_type, Some(&invocation.conversation_id))
+                    .await?
+                    .into_iter()
+                    .map(|record| (resource_type.clone(), record))
+                    .collect(),
+                None => Vec::new(),
             };
             let request = wire::llm_request(&invocation)?;
+            let worker = registry.worker(&entry, &executable).await;
             yield ModelEvent::Start { model_call_id: invocation.call_id.clone() };
-            for attempt in 0..2 {
+            let attempts = candidates.len().max(1);
+            let mut attempt = 0;
+            let mut refreshed_current = false;
+            let mut forced: Option<(String, ResourceRecord)> = None;
+            loop {
                 if cancellation.is_cancelled() {
                     Err(Error::Cancelled)?;
                 }
+                let resource = match forced.take() {
+                    Some(prepared) => Some(prepared),
+                    None => match candidates.get(attempt) {
+                        Some((resource_type, record))
+                            if find_resource(&entry, resource_type)?.can_prepare =>
+                        {
+                            let prepared = registry
+                                .prepare_resource(
+                                    &entry,
+                                    &executable,
+                                    resource_type,
+                                    record.clone(),
+                                    None,
+                                )
+                                .await?;
+                            Some((resource_type.clone(), prepared))
+                        }
+                        other => other.cloned(),
+                    },
+                };
                 let params = serde_json::json!({
                     "providerId": provider_id,
                     "model": stored.snapshot(),
                     "resource": resource.as_ref().map(|(resource_type, record)| record.snapshot(resource_type)),
                     "request": request,
                 });
-                let worker = registry.worker(&entry, &executable).await;
                 let mut items = worker
                     .invoke_streaming("provider.invoke", params, cancellation.clone(), Some(recorder.clone()))
                     .await?;
                 let mut emitted = false;
-                let mut retry = false;
+                let mut result_value: Option<serde_json::Value> = None;
                 while let Some(item) = items.recv().await {
                     match item {
                         WorkerStreamItem::Event(event) => {
@@ -323,60 +344,100 @@ impl PluginRegistry {
                             yield wire::model_event(&event)?;
                         }
                         WorkerStreamItem::Result(result) => {
-                            let value = result?;
-                            let status = value
-                                .get("status")
-                                .and_then(serde_json::Value::as_str)
-                                .unwrap_or_default();
-                            if should_retry_auth(status, attempt, emitted) {
-                                if let Some((resource_type, record)) = resource.as_ref() {
-                                    if find_resource(&entry, resource_type)?.can_prepare {
-                                        let prepared = registry
-                                            .prepare_resource(
-                                                &entry,
-                                                &executable,
-                                                resource_type,
-                                                record.clone(),
-                                                Some(record.clone()),
-                                            )
-                                            .await?;
-                                        resource = Some((resource_type.clone(), prepared));
-                                        retry = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            let patch = value.get("patch")
-                                .filter(|patch| !patch.is_null())
-                                .map(|patch| serde_json::from_value::<ResourcePatch>(patch.clone()))
-                                .transpose()?;
-                            if let (Some(patch), Some((resource_type, record))) = (patch, resource.as_ref()) {
-                                if let Err(error) = registry.inner.state
-                                    .apply_patch_if_current(&plugin_id, resource_type, record, patch).await
-                                {
-                                    tracing::warn!(plugin = %plugin_id, %error, "failed to apply plugin resource patch");
-                                }
-                            }
-                            match status {
-                                "completed" => return,
-                                "auth-error" | "resource-error" | "request-error" => {
-                                    let message = value.get("message")
-                                        .and_then(serde_json::Value::as_str)
-                                        .unwrap_or("plugin provider call failed");
-                                    Err(Error::Provider(message.to_owned()))?;
-                                }
-                                status => {
-                                    Err(Error::Protocol(format!("unknown plugin provider result: {status}")))?;
-                                }
-                            }
+                            result_value = Some(result?);
+                            break;
                         }
                     }
                 }
-                if !retry {
-                    Err(Error::Provider(format!("plugin '{plugin_id}' worker stopped mid-stream")))?;
+                let Some(value) = result_value else {
+                    Err(Error::Provider(format!("plugin '{plugin_id}' worker stopped mid-stream")))?
+                };
+                let status = value
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                let patch = value.get("patch")
+                    .filter(|patch| !patch.is_null())
+                    .map(|patch| serde_json::from_value::<ResourcePatch>(patch.clone()))
+                    .transpose()?;
+                if let (Some(patch), Some((resource_type, record))) = (patch, resource.as_ref()) {
+                    if let Err(error) = registry.inner.state
+                        .apply_patch_if_current(&plugin_id, resource_type, record, patch).await
+                    {
+                        tracing::warn!(plugin = %plugin_id, %error, "failed to apply plugin resource patch");
+                    }
+                }
+                match status {
+                    "completed" => return,
+                    "auth-error" | "resource-error" => {
+                        let message = value.get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("plugin provider call failed")
+                            .to_owned();
+                        let can_prepare = resource
+                            .as_ref()
+                            .is_some_and(|(resource_type, _)| {
+                                find_resource(&entry, resource_type)
+                                    .is_ok_and(|resource| resource.can_prepare)
+                            });
+                        match next_stream_step(
+                            status,
+                            emitted,
+                            refreshed_current,
+                            can_prepare,
+                            attempt + 1 < attempts,
+                        ) {
+                            StreamAttemptStep::RetryAfterRefresh => {
+                                let Some((resource_type, record)) = candidates.get(attempt)
+                                else {
+                                    Err(Error::Provider(message))?
+                                };
+                                let prepared = registry
+                                    .prepare_resource(
+                                        &entry,
+                                        &executable,
+                                        resource_type,
+                                        record.clone(),
+                                        Some(record.clone()),
+                                    )
+                                    .await?;
+                                tracing::warn!(
+                                    plugin = %plugin_id,
+                                    account = %record.key,
+                                    %message,
+                                    "plugin account rejected pre-output; retrying after a forced credential refresh"
+                                );
+                                forced = Some((resource_type.clone(), prepared));
+                                refreshed_current = true;
+                                continue;
+                            }
+                            StreamAttemptStep::Failover => {
+                                tracing::warn!(
+                                    plugin = %plugin_id,
+                                    account = %resource.as_ref().map(|(_, record)| record.key.as_str()).unwrap_or_default(),
+                                    %message,
+                                    "plugin account failed before any event; failing over to the next candidate"
+                                );
+                                attempt += 1;
+                                refreshed_current = false;
+                                continue;
+                            }
+                            StreamAttemptStep::Fail => {
+                                Err(Error::Provider(message))?;
+                            }
+                        }
+                    }
+                    "request-error" => {
+                        let message = value.get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("plugin provider call failed");
+                        Err(Error::Provider(message.to_owned()))?;
+                    }
+                    status => {
+                        Err(Error::Protocol(format!("unknown plugin provider result: {status}")))?;
+                    }
                 }
             }
-            Err(Error::Provider("plugin authentication retry exhausted".into()))?;
         })
     }
 
@@ -1434,12 +1495,17 @@ impl PluginRegistry {
         Ok(models.len())
     }
 
-    /// First-version selection: take the first usable resource in creation order; a cooled-down resource counts as usable.
-    async fn select_resource(
+    /// Candidate accounts are stably ordered by plan priority; with an affinity key
+    /// (conversation ID) a hash picks the preferred candidate, so a session lands on the
+    /// same account while the candidate set is unchanged and drifts naturally as cooling
+    /// or disabled accounts drop out. The returned order is the failover order for one
+    /// request.
+    async fn select_resources(
         &self,
         plugin_id: &str,
         resource_type: &str,
-    ) -> Result<ResourceRecord> {
+        affinity: Option<&str>,
+    ) -> Result<Vec<ResourceRecord>> {
         let disabled_accounts = self
             .inner
             .store
@@ -1477,17 +1543,32 @@ impl PluginRegistry {
             }
         };
 
-        ready_records.sort_by_key(|r| get_priority(r));
-        if let Some(best_prio) = ready_records.first().map(|r| get_priority(r)) {
-            ready_records.retain(|r| get_priority(r) == best_prio);
-        }
+        // Plan tier first, ID as the tiebreaker, so the order is stable while the candidate set is unchanged.
+        ready_records.sort_by(|a, b| {
+            get_priority(a)
+                .cmp(&get_priority(b))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        let start = match affinity {
+            Some(key) => affinity_index(key, ready_records.len()),
+            None => {
+                self.inner
+                    .rr_counter
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    % ready_records.len()
+            }
+        };
+        ready_records.rotate_left(start);
+        Ok(ready_records)
+    }
 
-        let index = self
-            .inner
-            .rr_counter
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            % ready_records.len();
-        Ok(ready_records[index].clone())
+    async fn select_resource(
+        &self,
+        plugin_id: &str,
+        resource_type: &str,
+    ) -> Result<ResourceRecord> {
+        let mut candidates = self.select_resources(plugin_id, resource_type, None).await?;
+        Ok(candidates.remove(0))
     }
 
     async fn find_record(
@@ -1718,23 +1799,6 @@ async fn wait_for_refresh(deadline: Instant, shutdown: &CancellationToken) -> bo
     }
 }
 
-fn should_retry_auth(status: &str, attempt: usize, emitted: bool) -> bool {
-    status == "auth-error" && attempt == 0 && !emitted
-}
-
-#[cfg(test)]
-mod auth_retry_tests {
-    use super::*;
-
-    #[test]
-    fn authentication_retries_once_and_never_after_output() {
-        assert!(should_retry_auth("auth-error", 0, false));
-        assert!(!should_retry_auth("auth-error", 1, false));
-        assert!(!should_retry_auth("auth-error", 0, true));
-        assert!(!should_retry_auth("request-error", 0, false));
-    }
-}
-
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct OAuth2Begin {
@@ -1796,6 +1860,100 @@ struct ImportParseResult {
     resources: Vec<ResourceDraft>,
     #[serde(default)]
     warnings: Vec<String>,
+}
+
+/// What the stream loop does after an account-level failure on the current candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StreamAttemptStep {
+    /// Force-refresh the same candidate's credential and invoke it once more.
+    RetryAfterRefresh,
+    /// Move on to the next candidate account.
+    Failover,
+    /// Surface the failure.
+    Fail,
+}
+
+/// A rejected-but-fresh-looking credential can still be stale, so an `auth-error` earns the
+/// same account one forced re-prepare before failover; quota/resource failures move
+/// straight to the next candidate, and nothing retries once events have been emitted.
+fn next_stream_step(
+    status: &str,
+    emitted: bool,
+    refreshed_current: bool,
+    can_prepare: bool,
+    has_next: bool,
+) -> StreamAttemptStep {
+    if emitted {
+        return StreamAttemptStep::Fail;
+    }
+    match status {
+        "auth-error" if !refreshed_current && can_prepare => StreamAttemptStep::RetryAfterRefresh,
+        "auth-error" | "resource-error" if has_next => StreamAttemptStep::Failover,
+        _ => StreamAttemptStep::Fail,
+    }
+}
+
+#[cfg(test)]
+mod stream_step_tests {
+    use super::*;
+
+    #[test]
+    fn auth_error_refreshes_once_then_fails_over() {
+        // First auth rejection on a preparable credential: force-refresh and retry same.
+        assert_eq!(
+            next_stream_step("auth-error", false, false, true, false),
+            StreamAttemptStep::RetryAfterRefresh
+        );
+        // Same account already refreshed: fail over when another candidate exists.
+        assert_eq!(
+            next_stream_step("auth-error", false, true, true, true),
+            StreamAttemptStep::Failover
+        );
+        // No candidate left: surface the failure.
+        assert_eq!(
+            next_stream_step("auth-error", false, true, true, false),
+            StreamAttemptStep::Fail
+        );
+        // Unpreparable resources never earn a refresh retry.
+        assert_eq!(
+            next_stream_step("auth-error", false, false, false, true),
+            StreamAttemptStep::Failover
+        );
+    }
+
+    #[test]
+    fn resource_errors_fail_over_without_refreshing() {
+        assert_eq!(
+            next_stream_step("resource-error", false, false, true, true),
+            StreamAttemptStep::Failover
+        );
+        assert_eq!(
+            next_stream_step("resource-error", false, false, true, false),
+            StreamAttemptStep::Fail
+        );
+    }
+
+    #[test]
+    fn nothing_retries_once_events_are_emitted() {
+        for status in ["auth-error", "resource-error", "request-error"] {
+            assert_eq!(
+                next_stream_step(status, true, false, true, true),
+                StreamAttemptStep::Fail
+            );
+        }
+        assert_eq!(
+            next_stream_step("request-error", false, false, true, true),
+            StreamAttemptStep::Fail
+        );
+    }
+}
+
+/// Preferred index for session affinity: constant for the same key while the candidate count is unchanged.
+fn affinity_index(key: &str, len: usize) -> usize {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut hasher);
+    (hasher.finish() as usize) % len
 }
 
 fn find_provider<'a>(entry: &'a PluginEntry, provider_id: &str) -> Result<&'a ProviderDefinition> {

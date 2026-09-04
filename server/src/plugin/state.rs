@@ -235,10 +235,7 @@ impl PluginStateStore {
             .data
             .read(plugin_id, &resource_key(resource_type))
             .await?;
-        if value.is_null() {
-            return Ok(Vec::new());
-        }
-        Ok(serde_json::from_value(value)?)
+        parse_records(value)
     }
 
     pub async fn upsert_resources(
@@ -247,41 +244,45 @@ impl PluginStateStore {
         resource_type: &str,
         drafts: Vec<ResourceDraft>,
     ) -> Result<UpsertOutcome> {
-        let _mutation = self.mutations.lock().await;
-        let mut records = self.resources(plugin_id, resource_type).await?;
         let now = now_ms();
         let mut outcome = UpsertOutcome {
             added: 0,
             updated: 0,
         };
-        for draft in drafts {
+        for draft in &drafts {
             if draft.key.trim().is_empty() {
                 return Err(Error::Protocol("plugin resource draft requires key".into()));
             }
-            let state = draft
-                .state
-                .map_or(ResourceState::Ready, ResourceState::from);
-            match records.iter_mut().find(|record| record.key == draft.key) {
-                Some(existing) => {
-                    existing.private_data = draft.private_data;
-                    existing.state = state;
-                    existing.updated_at_ms = now;
-                    outcome.updated += 1;
-                }
-                None => {
-                    records.push(ResourceRecord {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        key: draft.key,
-                        private_data: draft.private_data,
-                        state,
-                        created_at_ms: now,
-                        updated_at_ms: now,
-                    });
-                    outcome.added += 1;
-                }
-            }
         }
-        self.save_resources(plugin_id, resource_type, &records)
+        self.data
+            .modify(plugin_id, &resource_key(resource_type), |value| {
+                let mut records = parse_records(value)?;
+                for draft in drafts {
+                    let state = draft
+                        .state
+                        .map_or(ResourceState::Ready, ResourceState::from);
+                    match records.iter_mut().find(|record| record.key == draft.key) {
+                        Some(existing) => {
+                            existing.private_data = draft.private_data;
+                            existing.state = state;
+                            existing.updated_at_ms = now;
+                            outcome.updated += 1;
+                        }
+                        None => {
+                            records.push(ResourceRecord {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                key: draft.key,
+                                private_data: draft.private_data,
+                                state,
+                                created_at_ms: now,
+                                updated_at_ms: now,
+                            });
+                            outcome.added += 1;
+                        }
+                    }
+                }
+                Ok(serde_json::to_value(records)?)
+            })
             .await?;
         Ok(outcome)
     }
@@ -325,28 +326,32 @@ impl PluginStateStore {
         patch: ResourcePatch,
         expected: Option<&ResourceRecord>,
     ) -> Result<bool> {
-        let _mutation = self.mutations.lock().await;
-        let mut records = self.resources(plugin_id, resource_type).await?;
-        let record = records
-            .iter_mut()
-            .find(|record| record.id == resource_id)
-            .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
-        if expected.is_some_and(|old_record| {
-            old_record.updated_at_ms != record.updated_at_ms
-                || old_record.private_data != record.private_data
-        }) {
-            return Ok(false);
-        }
-        if let Some(private_data) = patch.private_data {
-            record.private_data = private_data;
-        }
-        if let Some(state) = patch.state {
-            record.state = state.into();
-        }
-        record.updated_at_ms = now_ms();
-        self.save_resources(plugin_id, resource_type, &records)
+        let mut applied = false;
+        self.data
+            .modify(plugin_id, &resource_key(resource_type), |value| {
+                let mut records = parse_records(value.clone())?;
+                let record = records
+                    .iter_mut()
+                    .find(|record| record.id == resource_id)
+                    .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
+                if expected.is_some_and(|old_record| {
+                    old_record.updated_at_ms != record.updated_at_ms
+                        || old_record.private_data != record.private_data
+                }) {
+                    return Ok(value);
+                }
+                if let Some(private_data) = patch.private_data {
+                    record.private_data = private_data;
+                }
+                if let Some(state) = patch.state {
+                    record.state = state.into();
+                }
+                record.updated_at_ms = now_ms();
+                applied = true;
+                Ok(serde_json::to_value(records)?)
+            })
             .await?;
-        Ok(true)
+        Ok(applied)
     }
 
     pub async fn remove_resource(
@@ -355,16 +360,19 @@ impl PluginStateStore {
         resource_type: &str,
         resource_id: &str,
     ) -> Result<ResourceRecord> {
-        let _mutation = self.mutations.lock().await;
-        let mut records = self.resources(plugin_id, resource_type).await?;
-        let index = records
-            .iter()
-            .position(|record| record.id == resource_id)
-            .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
-        let removed = records.remove(index);
-        self.save_resources(plugin_id, resource_type, &records)
+        let mut removed: Option<ResourceRecord> = None;
+        self.data
+            .modify(plugin_id, &resource_key(resource_type), |value| {
+                let mut records = parse_records(value)?;
+                let index = records
+                    .iter()
+                    .position(|record| record.id == resource_id)
+                    .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
+                removed = Some(records.remove(index));
+                Ok(serde_json::to_value(records)?)
+            })
             .await?;
-        Ok(removed)
+        Ok(removed.expect("remove_resource stashed the removed record"))
     }
 
     pub async fn models(&self, plugin_id: &str, provider_id: &str) -> Result<Vec<StoredModel>> {
@@ -429,21 +437,6 @@ impl PluginStateStore {
         let _mutation = self.mutations.lock().await;
         self.data.clear(plugin_id).await
     }
-
-    async fn save_resources(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-        records: &[ResourceRecord],
-    ) -> Result<()> {
-        self.data
-            .update(
-                plugin_id,
-                &resource_key(resource_type),
-                &serde_json::to_value(records)?,
-            )
-            .await
-    }
 }
 
 pub fn now_ms() -> i64 {
@@ -451,6 +444,13 @@ pub fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
         .unwrap_or_default()
+}
+
+fn parse_records(value: serde_json::Value) -> Result<Vec<ResourceRecord>> {
+    if value.is_null() {
+        return Ok(Vec::new());
+    }
+    Ok(serde_json::from_value(value)?)
 }
 
 fn resource_key(resource_type: &str) -> String {
