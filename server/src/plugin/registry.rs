@@ -50,6 +50,7 @@ struct RegistryInner {
     preparation_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     pending_preparations: Mutex<HashMap<String, (ResourceRecord, serde_json::Value)>>,
     resource_operations: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    rr_counter: std::sync::atomic::AtomicUsize,
 }
 
 struct OAuthSession {
@@ -150,6 +151,7 @@ impl PluginRegistry {
                 preparation_locks: Mutex::new(HashMap::new()),
                 pending_preparations: Mutex::new(HashMap::new()),
                 resource_operations: Mutex::new(HashMap::new()),
+                rr_counter: std::sync::atomic::AtomicUsize::new(0),
             }),
         })
     }
@@ -184,6 +186,12 @@ impl PluginRegistry {
         let Some(executable) = self.inner.runtime.executable() else {
             return Vec::new();
         };
+        let disabled_models = self
+            .inner
+            .store
+            .disabled_plugin_models()
+            .await
+            .unwrap_or_default();
         let mut models = Vec::new();
         for entry in self.entries(&executable).await {
             for provider in &entry.definition.providers {
@@ -196,14 +204,19 @@ impl PluginRegistry {
                     .models(&entry.manifest.id, &provider.id)
                     .await
                     .unwrap_or_default();
-                models.extend(stored.iter().filter(|model| model.enabled).map(|model| {
-                    PluginModelDescriptor::new(
+                models.extend(stored.iter().filter(|model| model.enabled).filter_map(|model| {
+                    let descriptor = PluginModelDescriptor::new(
                         &entry.manifest.id,
                         &entry.manifest.name,
                         &entry.icon,
                         provider,
                         model,
-                    )
+                    );
+                    if disabled_models.contains(&descriptor.id) {
+                        None
+                    } else {
+                        Some(descriptor)
+                    }
                 }));
             }
         }
@@ -234,6 +247,15 @@ impl PluginRegistry {
     }
 
     pub async fn plan_model(&self, model_id: &str) -> Result<PluginInvocationPlan> {
+        let disabled_models = self
+            .inner
+            .store
+            .disabled_plugin_models()
+            .await
+            .unwrap_or_default();
+        if disabled_models.contains(model_id) {
+            return Err(Error::Provider(format!("plugin model '{model_id}' is disabled")));
+        }
         let model = self.model_descriptor(model_id).await?;
         let request_url = format!("plugin://{}/{}", model.plugin_id, model.provider_id);
         Ok(PluginInvocationPlan { model, request_url })
@@ -1315,13 +1337,21 @@ impl PluginRegistry {
             }
         }
         match &provider.resource_type {
-            Some(resource_type) => !self
-                .inner
-                .state
-                .resources(plugin_id, resource_type)
-                .await
-                .unwrap_or_default()
-                .is_empty(),
+            Some(resource_type) => {
+                let disabled_accounts = self
+                    .inner
+                    .store
+                    .disabled_plugin_accounts()
+                    .await
+                    .unwrap_or_default();
+                let resources = self
+                    .inner
+                    .state
+                    .resources(plugin_id, resource_type)
+                    .await
+                    .unwrap_or_default();
+                resources.iter().any(|r| !disabled_accounts.contains(&r.id))
+            }
             None => true,
         }
     }
@@ -1410,19 +1440,54 @@ impl PluginRegistry {
         plugin_id: &str,
         resource_type: &str,
     ) -> Result<ResourceRecord> {
+        let disabled_accounts = self
+            .inner
+            .store
+            .disabled_plugin_accounts()
+            .await
+            .unwrap_or_default();
         let records = self.inner.state.resources(plugin_id, resource_type).await?;
-        if records.is_empty() {
+        let active_records: Vec<_> = records
+            .into_iter()
+            .filter(|record| !disabled_accounts.contains(&record.id))
+            .collect();
+        if active_records.is_empty() {
             return Err(Error::Provider(format!(
-                "plugin '{plugin_id}' has no '{resource_type}' resource; add one first"
+                "plugin '{plugin_id}' has no enabled '{resource_type}' resource; enable or add one first"
             )));
         }
         let now = now_ms();
-        records
-            .iter()
-            .find(|record| record.state.is_ready(now))
-            .or_else(|| records.first())
-            .cloned()
-            .ok_or_else(|| Error::Provider("no plugin resource is available".into()))
+        let mut ready_records: Vec<_> = active_records
+            .into_iter()
+            .filter(|record| record.state.is_ready(now))
+            .collect();
+        if ready_records.is_empty() {
+            return Err(Error::Provider(format!(
+                "all enabled accounts for plugin '{plugin_id}' are currently cooling or rate-limited"
+            )));
+        }
+
+        let get_priority = |r: &ResourceRecord| -> u8 {
+            let label = r.private_data.get("quota").and_then(|q| q.get("planLabel")).and_then(|l| l.as_str()).unwrap_or("");
+            let lower = label.to_lowercase();
+            if label.contains("🔥") || lower.contains("pro") || lower.contains("ultra") || lower.contains("premium") || lower.contains("advanced") {
+                0
+            } else {
+                1
+            }
+        };
+
+        ready_records.sort_by_key(|r| get_priority(r));
+        if let Some(best_prio) = ready_records.first().map(|r| get_priority(r)) {
+            ready_records.retain(|r| get_priority(r) == best_prio);
+        }
+
+        let index = self
+            .inner
+            .rr_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            % ready_records.len();
+        Ok(ready_records[index].clone())
     }
 
     async fn find_record(
@@ -1845,6 +1910,7 @@ mod credential_lifecycle_tests {
                 preparation_locks: Default::default(),
                 pending_preparations: Default::default(),
                 resource_operations: Default::default(),
+                rr_counter: Default::default(),
             }),
         };
         (root, registry, entry, executable, record)

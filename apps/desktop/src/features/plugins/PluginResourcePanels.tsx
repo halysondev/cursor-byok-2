@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
+  getDisabledPluginAccountIds,
+  getDisabledPluginModelIds,
+  setPluginAccountEnabled,
+  setPluginModelEnabled,
+  setMultiplePluginModelsEnabled,
   pluginText,
   type PluginAddMethod,
   type PluginDescriptor,
@@ -19,6 +24,7 @@ import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { Modal } from "../../shared/ui/Modal";
 import { Switch } from "../../shared/ui/Switch";
+import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
 import styles from "./PluginResourcePanels.module.scss";
 
 const PAGE_SIZE = 10;
@@ -127,15 +133,24 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
     }
   };
 
-  const userCode = begun?.userCode;
   return <Card className={styles.methodCard}>
     <strong>{pluginText(method.displayName)}</strong>
     {method.description && <span>{pluginText(method.description)}</span>}
-    {userCode && status === "polling" && <div className={styles.deviceCode}>
+    {begun && status === "polling" && <div className={styles.deviceCode}>
       <small>{"Device code"}</small>
-      <button type="button" onClick={() => void copyCode(userCode)}>{userCode}</button>
-      <button type="button" className={styles.copy} onClick={() => void copyCode(userCode)}>
-        {copied ? "Copied" : "Duplicate"}
+      <button
+        type="button"
+        title={begun.verificationUrlComplete || begun.verificationUrl || begun.userCode || undefined}
+        onClick={() => void copyCode((begun.verificationUrlComplete || begun.verificationUrl || begun.userCode) ?? "")}
+      >
+        {begun.userCode?.startsWith("http") ? "Authorization URL" : begun.userCode}
+      </button>
+      <button
+        type="button"
+        className={styles.copy}
+        onClick={() => void copyCode((begun.verificationUrlComplete || begun.verificationUrl || begun.userCode) ?? "")}
+      >
+        {copied ? "Copied" : "Copy"}
       </button>
     </div>}
     <div className={styles.actions}>
@@ -155,14 +170,13 @@ export function PluginSettingsPanel({ plugin, onResourcesEmpty }: {
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [modelProviderId, setModelProviderId] = useState<string | null>(null);
+  const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [resourceAction, setResourceAction] = useState<{
     resource: PluginResourceDescriptor;
     item: PluginResourceView;
   } | null>(null);
   const [resourceActionResult, setResourceActionResult] = useState<PluginResourceActionResult | null>(null);
   const [resourceActionError, setResourceActionError] = useState<string | null>(null);
-  const modelProvider = modelProviderId ? plugin.providers.find((provider) => provider.id === modelProviderId) ?? null : null;
   const quotaNow = useQuotaClock(plugin.resources);
   usePluginSnapshotPoll();
 
@@ -211,15 +225,39 @@ export function PluginSettingsPanel({ plugin, onResourcesEmpty }: {
     void executeResourceAction({ resource, item }, action);
   };
 
-  const applyModels = async (provider: PluginProviderDescriptor, enabledByModel: Record<string, boolean>) => {
-    await run("models", async () => {
-      for (const model of provider.models) {
-        const enabled = enabledByModel[model.id] ?? model.enabled;
-        if (model.enabled !== enabled) await api.setPluginModelEnabled(plugin.id, provider.id, model.modelId, enabled);
+  useEffect(() => {
+    let active = true;
+    const autoRefreshResources = async () => {
+      let didRefresh = false;
+      for (const res of plugin.resources) {
+        if (!res.canRefresh) continue;
+        for (const item of res.resources) {
+          if (!active) return;
+          // Auto-refresh resources marked invalid or missing metrics.
+          if (item.state.status === "invalid" || item.metrics.length === 0) {
+            try {
+              await api.refreshPluginResource(plugin.id, res.type, item.id);
+              didRefresh = true;
+            } catch {
+              // Ignore background refresh failures.
+            }
+          }
+        }
       }
-    });
-    setModelProviderId(null);
-  };
+      if (active && didRefresh) {
+        await appStore.refreshPlugins();
+      }
+    };
+    void autoRefreshResources();
+    return () => { active = false; };
+  }, [plugin.id]);
+
+  if (activeProviderId) {
+    const provider = plugin.providers.find((p) => p.id === activeProviderId);
+    if (provider) {
+      return <ProviderModelsView provider={provider} onBack={() => setActiveProviderId(null)} />;
+    }
+  }
 
   return <div className={styles.panel}>
     {plugin.providers.map((provider) => <ProviderRow
@@ -227,10 +265,10 @@ export function PluginSettingsPanel({ plugin, onResourcesEmpty }: {
       provider={provider}
       busy={busy !== null}
       syncing={busy === `sync:${provider.id}`}
-      onManageModels={() => setModelProviderId(provider.id)}
       onSync={() => void run(`sync:${provider.id}`, async () => {
         await api.syncPluginModels(plugin.id, provider.id);
       })}
+      onViewModels={() => setActiveProviderId(provider.id)}
     />)}
     {plugin.resources.map((resource) => <ResourceList
       key={resource.type}
@@ -251,12 +289,6 @@ export function PluginSettingsPanel({ plugin, onResourcesEmpty }: {
       })}
     />)}
     {error && <span className={styles.error} role="alert">{error}</span>}
-    {modelProvider && <ModelManagementModal
-      provider={modelProvider}
-      busy={busy !== null}
-      onClose={() => setModelProviderId(null)}
-      onSubmit={(enabledByModel) => void applyModels(modelProvider, enabledByModel)}
-    />}
     {resourceAction && <ResourceActionModal
       action={resourceAction.resource.actions.find((item) => item.target === "resource") ?? null}
       cardAction={resourceAction.resource.actions.find((item) => item.target === "card") ?? null}
@@ -269,26 +301,36 @@ export function PluginSettingsPanel({ plugin, onResourcesEmpty }: {
   </div>;
 }
 
-function ProviderRow({ provider, busy, syncing, onManageModels, onSync }: {
+function ProviderRow({ provider, busy, syncing, onSync, onViewModels }: {
   provider: PluginProviderDescriptor;
   busy: boolean;
   syncing: boolean;
-  onManageModels: () => void;
   onSync: () => void;
+  onViewModels: () => void;
 }) {
+  const [disabledIds, setDisabledIds] = useState<Set<string>>(() => getDisabledPluginModelIds());
+
+  useEffect(() => {
+    const handleUpdate = () => setDisabledIds(getDisabledPluginModelIds());
+    window.addEventListener("cursor_plugin_models_changed", handleUpdate);
+    return () => window.removeEventListener("cursor_plugin_models_changed", handleUpdate);
+  }, []);
+
+  const enabledCount = provider.models.filter((m) => m.enabled && !disabledIds.has(m.id)).length;
+
   return <Card className={styles.providerRow}>
     <div>
       <strong>{pluginText(provider.displayName)}</strong>
       <span>
         {provider.providerType}
         {" · "}
-        {provider.models.length > 0 ? `${provider.models.length} models` : "Models not synced yet"}
+        {provider.models.length > 0 ? `${enabledCount}/${provider.models.length} models` : "Models not synced yet"}
         {" · "}
         {provider.configured ? "Callable" : "Not ready"}
       </span>
     </div>
     {provider.hasModels && <div className={styles.actions}>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={onManageModels}>{"Model management"}</Button>
+      {provider.models.length > 0 && <Button size="small" onClick={onViewModels}>{"View models"}</Button>}
       <Button size="small" disabled={busy} onClick={onSync}>
         {syncing ? "Syncing…" : "Sync models"}
       </Button>
@@ -296,53 +338,134 @@ function ProviderRow({ provider, busy, syncing, onManageModels, onSync }: {
   </Card>;
 }
 
-function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
-  provider: PluginProviderDescriptor;
-  busy: boolean;
-  onClose: () => void;
-  onSubmit: (enabledByModel: Record<string, boolean>) => void;
-}) {
-  const [enabledByModel, setEnabledByModel] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(provider.models.map((model) => [model.id, model.enabled])),
-  );
+function ProviderModelsView({ provider, onBack }: { provider: PluginProviderDescriptor; onBack: () => void }) {
+  const [search, setSearch] = useState("");
+  const [disabledIds, setDisabledIds] = useState<Set<string>>(() => getDisabledPluginModelIds());
 
-  const setAll = (enabled: boolean) => {
-    setEnabledByModel(Object.fromEntries(provider.models.map((model) => [model.id, enabled])));
+  useEffect(() => {
+    const handleUpdate = () => setDisabledIds(getDisabledPluginModelIds());
+    window.addEventListener("cursor_plugin_models_changed", handleUpdate);
+    return () => window.removeEventListener("cursor_plugin_models_changed", handleUpdate);
+  }, []);
+
+  const toggleModel = (modelId: string) => {
+    const isCurrentlyDisabled = disabledIds.has(modelId);
+    setPluginModelEnabled(modelId, isCurrentlyDisabled);
+    setDisabledIds(getDisabledPluginModelIds());
   };
 
-  return <Modal
-    fullHeight
-    open
-    title={`${pluginText(provider.displayName)} model management`}
-    busy={busy}
-    onClose={onClose}
-    onSubmit={() => onSubmit(enabledByModel)}
-    submitLabel={"Confirm"}
-  >
-    <div className={styles.modelToolbar}>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(true)}>{"Select all"}</Button>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(false)}>{"Deselect all"}</Button>
+  const filteredModels = provider.models.filter((m) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    const shortId = m.id.split("/").pop() || m.id;
+    return m.displayName.toLowerCase().includes(q) || shortId.toLowerCase().includes(q);
+  });
+
+  const toggleAll = (enable: boolean) => {
+    const target = filteredModels.length > 0 ? filteredModels : provider.models;
+    setMultiplePluginModelsEnabled(target.map((m) => m.id), enable);
+    setDisabledIds(getDisabledPluginModelIds());
+  };
+
+  const enabledCount = provider.models.filter((m) => m.enabled && !disabledIds.has(m.id)).length;
+
+  return (
+    <div className={styles.modelsView}>
+      <div className={styles.modelsViewHeader}>
+        <TooltipTrigger label={"Back"}>
+          <button type="button" className={styles.backButton} onClick={onBack} aria-label={"Back"}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </button>
+        </TooltipTrigger>
+        <div className={styles.headerTitle}>
+          <strong>{pluginText(provider.displayName)}</strong>
+          <span>{"Models"}</span>
+          <span className={styles.headerCountChip}>
+            {enabledCount}/{provider.models.length}
+          </span>
+        </div>
+      </div>
+      <div className={styles.modelListToolbar}>
+        <div className={styles.searchContainer}>
+          <svg className={styles.searchIcon} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input
+            type="text"
+            placeholder={"Search models…"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={styles.modelSearchInput}
+          />
+          {search && (
+            <button type="button" className={styles.clearSearchBtn} onClick={() => setSearch("")} aria-label="Clear">
+              ✕
+            </button>
+          )}
+        </div>
+        <div className={styles.modelBatchActions}>
+          <button type="button" onClick={() => toggleAll(true)} className={styles.pillButton}>
+            {"Select all"}
+          </button>
+          <button type="button" onClick={() => toggleAll(false)} className={styles.pillButton}>
+            {"Deselect all"}
+          </button>
+        </div>
+      </div>
+      <div className={styles.modelsViewList}>
+        {filteredModels.map((m) => {
+          const shortId = m.id.split("/").pop() || m.id;
+          const nameLower = m.displayName.toLowerCase();
+          const idLower = m.id.toLowerCase();
+          const isEnabled = m.enabled && !disabledIds.has(m.id);
+
+          const isClaude = nameLower.includes("claude") || idLower.includes("claude");
+          const isGemini = nameLower.includes("gemini") || idLower.includes("gemini");
+          const isGpt = nameLower.includes("gpt") || idLower.includes("gpt");
+          const isThinking = nameLower.includes("thinking") || idLower.includes("thinking");
+          const isHigh = nameLower.includes("(high)") || idLower.includes("-high");
+          const isMedium = nameLower.includes("(medium)") || idLower.includes("-medium");
+          const isLow = nameLower.includes("(low)") || idLower.includes("-low");
+          const isExtraLow = nameLower.includes("(extra-low)") || idLower.includes("-extra-low");
+          const isImage = nameLower.includes("image") || idLower.includes("image");
+
+          return (
+            <div
+              key={m.id}
+              className={`${styles.modelItem} ${isEnabled ? styles.modelItemActive : styles.modelItemDisabled}`}
+              onClick={() => toggleModel(m.id)}
+            >
+              <input
+                type="checkbox"
+                checked={isEnabled}
+                onChange={() => toggleModel(m.id)}
+                className={styles.modelCheckbox}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className={styles.modelInfo}>
+                <span className={styles.modelName}>{pluginText(m.displayName) || shortId}</span>
+                <span className={styles.modelId}>{shortId}</span>
+              </div>
+              <div className={styles.modelBadges}>
+                {isClaude && <span className={styles.claudeTag}>Claude</span>}
+                {isGemini && <span className={styles.geminiTag}>Gemini</span>}
+                {isGpt && <span className={styles.gptTag}>GPT-OSS</span>}
+                {isThinking && <span className={styles.thinkingTag}>Thinking</span>}
+                {isHigh && <span className={styles.highTag}>High</span>}
+                {isMedium && <span className={styles.mediumTag}>Medium</span>}
+                {isLow && <span className={styles.lowTag}>Low</span>}
+                {isExtraLow && <span className={styles.extraLowTag}>Extra-Low</span>}
+                {isImage && <span className={styles.imageTag}>Image</span>}
+              </div>
+            </div>
+          );
+        })}
+        {filteredModels.length === 0 && (
+          <div className={styles.emptySearch}>
+            <span>{"No data"}</span>
+          </div>
+        )}
+      </div>
     </div>
-    <div className={styles.modelTableWrap}>
-      <table className={styles.modelTable}>
-        <thead><tr><th scope="col">{"Model name"}</th><th scope="col">{"Enabled"}</th></tr></thead>
-        <tbody>
-          {provider.models.map((model) => <tr key={model.id}>
-            <td><div className={styles.modelName}>
-              <strong>{model.displayName}</strong>
-            </div></td>
-            <td><Switch
-              checked={enabledByModel[model.id] ?? model.enabled}
-              disabled={busy}
-              label={`Enable ${model.displayName}`}
-              onChange={(enabled) => setEnabledByModel((current) => ({ ...current, [model.id]: enabled }))}
-            /></td>
-          </tr>)}
-        </tbody>
-      </table>
-      {provider.models.length === 0 && <span className={styles.empty}>{"Models not synced yet"}</span>}
-    </div>
-  </Modal>;
+  );
 }
 
 function ResourceList({ pluginId, resource, busy, now, onAction, onRefresh, onDelete }: {
@@ -407,18 +530,47 @@ function ResourceRow({ isAntigravityAccount, item, actions, canRefresh, disabled
   onRefresh: () => void;
   onDelete: () => void;
 }) {
+  const [disabledAccountIds, setDisabledAccountIds] = useState<Set<string>>(() => getDisabledPluginAccountIds());
+
+  useEffect(() => {
+    const handleUpdate = () => setDisabledAccountIds(getDisabledPluginAccountIds());
+    window.addEventListener("cursor_plugin_accounts_changed", handleUpdate);
+    return () => window.removeEventListener("cursor_plugin_accounts_changed", handleUpdate);
+  }, []);
+
+  const isEnabled = !disabledAccountIds.has(item.id);
+  const toggleAccount = (checked: boolean) => {
+    setPluginAccountEnabled(item.id, checked);
+    setDisabledAccountIds(getDisabledPluginAccountIds());
+  };
+
+  const description = item.description ? pluginText(item.description).trim() : "";
+  const planBadge = (() => {
+    const lower = description.toLowerCase();
+    const isPro = lower.includes("pro") || lower.includes("ultra") || lower.includes("premium") || lower.includes("advanced");
+    const label = lower.includes("ultra") ? "ULTRA" : "PRO";
+    return <span className={isPro ? styles.proBadge : styles.freeBadge}>{isPro ? `🔥 ${label}` : "FREE"}</span>;
+  })();
+
   const resourceActions = actions.length > 0 || canRefresh;
-  return <Card className={styles.resourceRow}>
+  return <Card className={`${styles.resourceRow} ${!isEnabled ? styles.resourceRowDisabled : ""}`}>
     <div className={styles.resourceHeader}>
       <div className={styles.resourceIdentity}>
+        <Switch
+          checked={isEnabled}
+          disabled={disabled}
+          label={`Enable ${item.displayName}`}
+          onChange={toggleAccount}
+        />
         <div className={styles.resourceNameAndState}>
           <strong title={item.displayName}>{item.displayName}</strong>
-          {isAntigravityAccount && <StateBadge state={item.state} />}
+          {description && planBadge}
+          {isAntigravityAccount && <StateBadge isEnabled={isEnabled} state={item.state} />}
         </div>
-        {item.description && <span title={pluginText(item.description)}>{pluginText(item.description)}</span>}
+        {item.description && <span title={description}>{description}</span>}
       </div>
       <div className={styles.resourceOperations}>
-        {!isAntigravityAccount && <StateBadge state={item.state} />}
+        {!isAntigravityAccount && <StateBadge isEnabled={isEnabled} state={item.state} />}
         {resourceActions && <div className={styles.resourceActionButtons} aria-label={"Resource operations"}>
           {actions.map((action) => <Button key={action.id} size="small" disabled={disabled} onClick={() => onAction(action)}>{pluginText(action.displayName)}</Button>)}
           {canRefresh && <Button size="small" disabled={disabled} onClick={onRefresh}>{"Refresh"}</Button>}
@@ -647,14 +799,17 @@ function formatActionDate(value: number) {
   return new Date(value).toLocaleString("en-US");
 }
 
-function StateBadge({ state }: { state: PluginResourceView["state"] }) {
+function StateBadge({ isEnabled = true, state }: { isEnabled?: boolean; state: PluginResourceView["state"] }) {
+  if (!isEnabled) {
+    return <span className={styles.disabledBadge}><span className={styles.badgeDot} />{"Disabled"}</span>;
+  }
   if (state.status === "cooling") {
-    return <span className={styles.cooling} title={state.message ?? undefined}>{"Cooling down"}</span>;
+    return <span className={styles.coolingBadge} title={state.message ?? undefined}><span className={styles.badgeDot} />{"Cooling down"}</span>;
   }
   if (state.status === "invalid") {
-    return <span className={styles.invalid} title={state.message ?? undefined}>{"Invalid"}</span>;
+    return <span className={styles.invalidBadge} title={state.message ?? undefined}><span className={styles.badgeDot} />{"Invalid"}</span>;
   }
-  return <span className={styles.ready}>{"Ready"}</span>;
+  return <span className={styles.readyBadge}><span className={styles.badgeDot} />{"Ready"}</span>;
 }
 
 function errorText(cause: unknown) {
