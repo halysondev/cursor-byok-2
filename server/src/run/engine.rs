@@ -119,6 +119,11 @@ impl RunEngine {
             checkpoint_id = checkpoint.0,
             "Run claimed conversation ownership"
         );
+        let terminal_completion_run = prepared
+            .initial_messages
+            .iter()
+            .any(|message| message.terminal_completion.is_some());
+        let mut inserted_initial_message = false;
         if !prepared.initial_messages.is_empty() {
             let mut changed = false;
             for message in &prepared.initial_messages {
@@ -135,6 +140,7 @@ impl RunEngine {
                     Ok((next, inserted)) => {
                         checkpoint = next;
                         changed |= inserted;
+                        inserted_initial_message |= inserted;
                     }
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                 }
@@ -159,6 +165,9 @@ impl RunEngine {
                     return (outcome, usage);
                 }
             }
+        }
+        if terminal_completion_run && !inserted_initial_message {
+            return (RunOutcome::Completed, usage);
         }
 
         if let RunAction::Resume {
@@ -615,6 +624,7 @@ impl RunEngine {
                         }],
                     },
                     runtime_event_id: Some(event_id),
+                    terminal_completion: None,
                 };
                 checkpoint = match self
                     .store
@@ -698,6 +708,7 @@ impl RunEngine {
                         tool_calls: Vec::new(),
                     },
                     runtime_event_id: None,
+                    terminal_completion: None,
                 };
                 checkpoint = match self
                     .store
@@ -992,6 +1003,7 @@ impl RunEngine {
                 }],
             },
             runtime_event_id: Some(event_id),
+            terminal_completion: None,
         };
         let mut replacement = retained_request_context.into_iter().collect::<Vec<_>>();
         replacement.push(summary_message);
