@@ -249,6 +249,8 @@ export async function streamOpenAiResponses(
 
   let textOpen = false;
   let streamedText = "";
+  /** The output item streamedText belongs to; switching items clears it, a missing output_index keeps the current scope. */
+  let textIndex: number | null = null;
   let thinkingOpen = false;
   const tools = new Map<number, ToolState>();
   const reasoningItems: JsonValue[] = [];
@@ -279,6 +281,23 @@ export async function streamOpenAiResponses(
       streamedText = finalText;
     }
   };
+  // Mirrors the host-side Rust fix (#421): the final text reported by
+  // output_text.done/output_item.done describes a single output item, so the
+  // reconciliation baseline must be that item's own deltas. A baseline
+  // accumulated across the whole stream makes starts_with permanently false
+  // from the second text item on, silently dropping the reconciliation (and
+  // the whole text for relays that only emit finals). Switching output_index
+  // clears the baseline; an event without output_index keeps the current
+  // scope; a repeated final for the same item is not replayed because the
+  // baseline already equals the final.
+  const enterTextItem = (value: Record<string, unknown>) => {
+    const index = count(value.output_index);
+    if (index === null) return;
+    if (textIndex !== index) {
+      textIndex = index;
+      streamedText = "";
+    }
+  };
   const endStartedTools = () => {
     for (const [index, tool] of tools) {
       if (tool.started && !tool.ended) {
@@ -307,6 +326,7 @@ export async function streamOpenAiResponses(
     }
     switch (value.type) {
       case "response.output_text.delta": {
+        enterTextItem(value);
         closeThinking();
         if (!textOpen) {
           textOpen = true;
@@ -320,6 +340,7 @@ export async function streamOpenAiResponses(
         break;
       }
       case "response.output_text.done": {
+        enterTextItem(value);
         const finalText = text(value.text);
         if (finalText !== null) reconcileText(finalText);
         closeText();
@@ -355,6 +376,7 @@ export async function streamOpenAiResponses(
           reasoningItems.push(item as JsonValue);
         } else if (item?.type === "message") {
           sawCompletedItem = true;
+          enterTextItem(value);
           const finalText = itemText(item);
           if (finalText !== null) reconcileText(finalText);
           closeText();
