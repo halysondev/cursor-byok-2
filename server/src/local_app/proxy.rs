@@ -16,7 +16,7 @@ use crate::{
     Error, Result,
 };
 
-use super::ca::LoadedCa;
+use super::{ca::LoadedCa, remote_ssh::SkillSyncServer};
 
 #[derive(Default)]
 pub struct ProxyRuntime {
@@ -24,6 +24,7 @@ pub struct ProxyRuntime {
     port: Option<u16>,
     stop: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<()>>,
+    skill_sync: Option<SkillSyncServer>,
 }
 
 impl ProxyRuntime {
@@ -41,12 +42,17 @@ impl ProxyRuntime {
         }
     }
 
+    pub fn skill_sync(&self) -> Option<SkillSyncServer> {
+        self.running().then(|| self.skill_sync.clone()).flatten()
+    }
+
     pub async fn start(
         &mut self,
         backend: SocketAddr,
         ca: LoadedCa,
         requested_port: u16,
         tab_mode: Arc<RwLock<TabMode>>,
+        skill_sync: SkillSyncServer,
     ) -> Result<(String, u16)> {
         if let Some(url) = self.url() {
             return Ok((url, self.port.unwrap_or_default()));
@@ -59,7 +65,11 @@ impl ProxyRuntime {
             .with_listener(listener)
             .with_ca(authority)
             .with_rustls_connector(aws_lc_rs::default_provider())
-            .with_http_handler(CursorRelay { backend, tab_mode })
+            .with_http_handler(CursorRelay {
+                backend,
+                tab_mode,
+                skill_sync: skill_sync.clone(),
+            })
             .with_graceful_shutdown(async move {
                 let _ = done.await;
             })
@@ -68,6 +78,7 @@ impl ProxyRuntime {
         self.stop = Some(stop);
         self.url = Some(format!("http://{address}"));
         self.port = Some(address.port());
+        self.skill_sync = Some(skill_sync);
         self.task = Some(tokio::spawn(async move {
             if let Err(error) = proxy.start().await {
                 tracing::error!(%error, "Cursor proxy stopped unexpectedly");
@@ -85,6 +96,7 @@ impl ProxyRuntime {
         }
         self.url = None;
         self.port = None;
+        self.skill_sync = None;
     }
 }
 
@@ -104,6 +116,7 @@ async fn bind_proxy_listener(requested_port: u16) -> Result<TcpListener> {
 struct CursorRelay {
     backend: SocketAddr,
     tab_mode: Arc<RwLock<TabMode>>,
+    skill_sync: SkillSyncServer,
 }
 
 impl HttpHandler for CursorRelay {
@@ -159,6 +172,28 @@ impl HttpHandler for CursorRelay {
         // the explicit route table fall through to the router fallback
         // (proxy::forward), which uses the configured outbound proxy. Tab paths
         // in explicit Direct mode keep their original upstream pass-through.
+        // Remote SSH skill bootstrap scripts are served locally.
+        if request.method() == Method::GET {
+            if let Some(script) = self.skill_sync.script_for_path(original.path()) {
+                let (status, body) = match script {
+                    Ok(script) => (StatusCode::OK, script),
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to prepare user skills for Remote SSH");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Cursor BYOK could not prepare the local user skills.\n".into(),
+                        )
+                    }
+                };
+                return Response::builder()
+                    .status(status)
+                    .header("content-type", "text/plain; charset=utf-8")
+                    .header("cache-control", "no-store")
+                    .body(Body::from(body))
+                    .expect("static Remote SSH skill response is valid")
+                    .into();
+            }
+        }
         let route_locally = is_cursor_host(original.host().unwrap_or_default())
             && (should_route_locally(original.path(), *self.tab_mode.read())
                 || !is_tab_path(original.path()));

@@ -1,7 +1,6 @@
 //! Verifies KnowledgeBase rules CRUD falls back to local markdown storage
 //! when the Cursor upstream is unreachable or rejects the request.
-#[path = "support/fixtures.rs"]
-mod fixtures;
+mod support;
 
 use axum::{
     body::{to_bytes, Body},
@@ -13,6 +12,7 @@ use cursor_server::{
     cursor::services::knowledge::{self, KnowledgeService},
 };
 use prost::Message;
+use support::temp_store;
 
 // Test-side mirror message definitions that double as a wire-compatibility check.
 #[derive(Clone, PartialEq, Message)]
@@ -105,7 +105,7 @@ async fn decode<M: Message + Default>(response: Response<Body>) -> M {
 /// endpoints exercise the local fallback: md persistence, offline-log compaction, and CRUD.
 #[tokio::test]
 async fn offline_crud_round_trip_persists_markdown() {
-    let (_store_dir, store) = fixtures::temp_store().await;
+    let (_store_dir, store) = temp_store().await;
     let upstream = CursorProxy::cursor(cursor_server::network::NetworkClients::new(store));
     let rules_dir = tempfile::tempdir().unwrap();
     let rules_root = rules_dir.path().join("rules");
@@ -195,7 +195,7 @@ async fn offline_crud_round_trip_persists_markdown() {
 
 #[tokio::test]
 async fn updating_missing_rule_reports_failure() {
-    let (_store_dir, store) = fixtures::temp_store().await;
+    let (_store_dir, store) = temp_store().await;
     let upstream = CursorProxy::cursor(cursor_server::network::NetworkClients::new(store));
     let rules_dir = tempfile::tempdir().unwrap();
     let service = KnowledgeService::with_root(rules_dir.path().join("rules")).unwrap();
@@ -245,7 +245,7 @@ struct KnowledgeItem {
 /// every stored rule is returned (subject to the requested limit).
 #[tokio::test]
 async fn relevant_knowledge_is_global_across_git_origins() {
-    let (_store_dir, store) = fixtures::temp_store().await;
+    let (_store_dir, store) = temp_store().await;
     let upstream = CursorProxy::cursor(cursor_server::network::NetworkClients::new(store));
     let rules_dir = tempfile::tempdir().unwrap();
     let service = KnowledgeService::with_root(rules_dir.path().join("rules")).unwrap();
@@ -317,7 +317,7 @@ async fn prompt_compiler_appends_the_global_rules_section() {
     let compiler = PromptCompiler::new(PromptAssets::embedded().unwrap())
         .with_global_rules_dir(rules_dir.path().join("global"));
 
-    let (_store_dir, store) = fixtures::temp_store().await;
+    let (_store_dir, store) = temp_store().await;
     let upstream = CursorProxy::cursor(cursor_server::network::NetworkClients::new(store));
     // The global rules live in the rules service's `rules/global` subtree —
     // the same directory the compiler reads at prompt-compile time.

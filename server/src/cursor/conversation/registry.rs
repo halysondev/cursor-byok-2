@@ -26,6 +26,8 @@ pub(crate) struct ConversationDependencies {
     pub provider: Arc<dyn Provider>,
     pub compiler: PromptCompiler,
     pub web_cache: WebCache,
+    /// Plugin registry; the Task tool's model list and the model catalog need the plugin models' effective axes.
+    pub plugins: Option<crate::plugin::PluginRegistry>,
     /// The local rules service's md storage directory; its rules are merged when compiling the request context.
     pub local_rules_dir: Option<std::path::PathBuf>,
 }
@@ -49,6 +51,7 @@ impl ConversationRegistry {
         provider: Arc<dyn Provider>,
         compiler: PromptCompiler,
         web_cache: WebCache,
+        plugins: Option<crate::plugin::PluginRegistry>,
         local_rules_dir: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
@@ -61,6 +64,7 @@ impl ConversationRegistry {
                     provider,
                     compiler,
                     web_cache,
+                    plugins,
                     local_rules_dir,
                 },
             }),

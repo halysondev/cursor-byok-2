@@ -10,6 +10,9 @@ use crate::{Error, Result};
 pub const OPENAI_RESPONSES_ENDPOINT: &str = "/v1/responses";
 pub const OPENAI_CHAT_ENDPOINT: &str = "/v1/chat/completions";
 
+/// The default Context tier shared by the Cursor catalog and the Task tool.
+pub const DEFAULT_CONTEXT_OPTION: &str = "200k";
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ProviderType {
     #[serde(rename = "openai-chat")]
@@ -215,6 +218,184 @@ impl ModelConfig {
         }
         model.reasoning.enabled |= model.reasoning.effort.is_some();
     }
+
+    /// The same variant axis as the catalog: the named entry matching the configured
+    /// window (or the bare token count) leads the context axis, the rest keep their
+    /// configured order; the effort axis adopts the configuration as-is (it may be
+    /// empty, meaning no reasoning axis).
+    pub fn variant_axis(&self) -> ModelVariantAxis {
+        let mut context_options = Vec::with_capacity(
+            self.context_options.len() + usize::from(self.context_window_tokens.is_some()),
+        );
+        if let Some(tokens) = self.context_window_tokens {
+            match self
+                .context_options
+                .iter()
+                .find(|value| super::parse_token_count(value) == Some(tokens))
+            {
+                Some(value) => context_options.push(value.clone()),
+                None => context_options.push(tokens.to_string()),
+            }
+        }
+        for value in &self.context_options {
+            if self
+                .context_window_tokens
+                .is_some_and(|tokens| super::parse_token_count(value) == Some(tokens))
+            {
+                continue;
+            }
+            context_options.push(value.clone());
+        }
+        ModelVariantAxis {
+            context_options,
+            effort_options: self.effort_options.clone(),
+        }
+    }
+}
+
+/// The components of a variant slug: {hash}-{context}[-{effort}][-fast];
+/// a model without a reasoning axis has no effort segment.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ModelVariantParts {
+    pub context: String,
+    pub effort: Option<String>,
+    pub fast: bool,
+}
+
+/// One model's variant axes. Catalog publishing, slug parsing, and Task tool defaults share this single definition.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ModelVariantAxis {
+    pub context_options: Vec<String>,
+    pub effort_options: Vec<String>,
+}
+
+impl ModelVariantAxis {
+    /// The catalog's default variant rule: context prefers 200k, otherwise the first
+    /// entry; effort prefers high, otherwise the first entry, or None when there is
+    /// no reasoning axis. Without a context axis the whole result is None (no slug
+    /// can be baked).
+    pub fn default_parts(&self) -> Option<ModelVariantParts> {
+        let context = self
+            .context_options
+            .iter()
+            .find(|value| value.as_str() == DEFAULT_CONTEXT_OPTION)
+            .or_else(|| self.context_options.first())?
+            .clone();
+        let effort = if self.effort_options.is_empty() {
+            None
+        } else {
+            Some(
+                self.effort_options
+                    .iter()
+                    .find(|value| value.as_str() == "high")
+                    .or_else(|| self.effort_options.first())
+                    .expect("effort options are not empty")
+                    .clone(),
+            )
+        };
+        Some(ModelVariantParts {
+            context,
+            effort,
+            fast: false,
+        })
+    }
+
+    /// Parses a variant slug of the form {hash}-{context}[-{effort}][-fast].
+    pub fn parse_slug(&self, hash: &str, key: &str) -> Option<ModelVariantParts> {
+        let suffix = key.strip_prefix(&format!("{hash}-"))?;
+        let (suffix, fast) = match suffix.strip_suffix("-fast") {
+            Some(suffix) => (suffix, true),
+            None => (suffix, false),
+        };
+        let (context, effort) = if self.effort_options.is_empty() {
+            (suffix, None)
+        } else {
+            let (context, effort) = suffix.rsplit_once('-')?;
+            (context, Some(effort))
+        };
+        if !self.context_options.iter().any(|value| value == context) {
+            return None;
+        }
+        if let Some(effort) = effort {
+            if !self.effort_options.iter().any(|value| value == effort) {
+                return None;
+            }
+        }
+        Some(ModelVariantParts {
+            context: context.into(),
+            effort: effort.map(str::to_string),
+            fast,
+        })
+    }
+
+    /// Bakes a variant slug; without a reasoning axis it has no effort segment.
+    pub fn bake_slug(&self, hash: &str, parts: &ModelVariantParts) -> String {
+        let mut slug = format!("{hash}-{}", parts.context);
+        if !self.effort_options.is_empty() {
+            if let Some(effort) = &parts.effort {
+                slug = format!("{slug}-{effort}");
+            }
+        }
+        if parts.fast {
+            slug = format!("{slug}-fast");
+        }
+        slug
+    }
+
+    /// The context option for a window token count; falls back to the bare token count when no named entry matches.
+    pub fn context_option_for_tokens(&self, tokens: u64) -> Option<String> {
+        Some(
+            self.context_options
+                .iter()
+                .find(|value| super::parse_token_count(value) == Some(tokens))
+                .cloned()
+                .unwrap_or_else(|| tokens.to_string()),
+        )
+    }
+
+    /// Validates a Task tool context parameter: after lowercasing it must land on the axis (an equal token count is allowed).
+    pub fn validate_context(&self, value: &str) -> Result<String> {
+        let value = value.trim().to_ascii_lowercase();
+        if self.context_options.is_empty() {
+            return Err(Error::Protocol(
+                "Task model parameter context is not supported by this model".into(),
+            ));
+        }
+        self.context_options
+            .iter()
+            .find(|option| option.as_str() == value)
+            .or_else(|| {
+                let tokens = super::parse_token_count(&value)?;
+                self.context_options
+                    .iter()
+                    .find(|option| super::parse_token_count(option) == Some(tokens))
+            })
+            .cloned()
+            .ok_or_else(|| {
+                Error::Protocol(format!(
+                    "Task model parameter context must be one of: {}",
+                    self.context_options.join(", ")
+                ))
+            })
+    }
+
+    /// Validates a Task tool reasoning parameter: after lowercasing it must land on the axis.
+    pub fn validate_effort(&self, value: &str) -> Result<String> {
+        let value = value.trim().to_ascii_lowercase();
+        if self.effort_options.is_empty() {
+            return Err(Error::Protocol(
+                "Task model parameter reasoning is not supported by this model".into(),
+            ));
+        }
+        if self.effort_options.iter().any(|option| option == &value) {
+            Ok(value)
+        } else {
+            Err(Error::Protocol(format!(
+                "Task model parameter reasoning must be one of: {}",
+                self.effort_options.join(", ")
+            )))
+        }
+    }
 }
 
 pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInput> {
@@ -261,7 +442,11 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
         reasoning_effort: (input.model_type == ModelType::OpenAi)
             .then_some(reasoning_effort)
             .flatten(),
-        effort_options: input.effort_options.clone(),
+        effort_options: input
+            .effort_options
+            .iter()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .collect(),
         context_options: input.context_options.clone(),
         openai_endpoint,
         openai_extra_params_enabled: input.model_type == ModelType::OpenAi
@@ -585,6 +770,16 @@ mod tests {
     }
 
     #[test]
+    fn normalize_model_input_lowercases_effort_options() {
+        let mut input = input();
+        input.effort_options = vec!["LOW".into(), "High".into()];
+
+        let normalized = normalize_model_input(&input).unwrap();
+
+        assert_eq!(normalized.effort_options, vec!["low", "high"]);
+    }
+
+    #[test]
     fn hash_matches_the_v0049_channel_identity() {
         let input = input();
         let expected = Sha256::digest(
@@ -685,5 +880,117 @@ mod tests {
         config.configure(&mut requested);
 
         assert_eq!(requested.context_window_tokens, Some(350_000));
+    }
+
+    fn axis() -> ModelVariantAxis {
+        ModelVariantAxis {
+            context_options: vec!["200k".into(), "1m".into()],
+            effort_options: vec!["low".into(), "high".into()],
+        }
+    }
+
+    #[test]
+    fn variant_slug_round_trips_with_and_without_fast() {
+        let axis = axis();
+        let parts = ModelVariantParts {
+            context: "1m".into(),
+            effort: Some("low".into()),
+            fast: true,
+        };
+        let slug = axis.bake_slug("hash", &parts);
+        assert_eq!(slug, "hash-1m-low-fast");
+        assert_eq!(axis.parse_slug("hash", &slug), Some(parts));
+        assert_eq!(
+            axis.parse_slug("hash", "hash-200k-high"),
+            Some(ModelVariantParts {
+                context: "200k".into(),
+                effort: Some("high".into()),
+                fast: false,
+            })
+        );
+        assert_eq!(axis.parse_slug("hash", "hash-1m"), None);
+        assert_eq!(axis.parse_slug("hash", "hash-1m-gone"), None);
+        assert_eq!(axis.parse_slug("hash", "other-1m-low"), None);
+    }
+
+    #[test]
+    fn variant_slug_omits_the_effort_segment_when_the_model_has_no_reasoning_axis() {
+        let axis = ModelVariantAxis {
+            context_options: vec!["200k".into(), "1m".into()],
+            effort_options: Vec::new(),
+        };
+        let parts = ModelVariantParts {
+            context: "1m".into(),
+            effort: None,
+            fast: false,
+        };
+        assert_eq!(axis.bake_slug("hash", &parts), "hash-1m");
+        assert_eq!(axis.parse_slug("hash", "hash-1m"), Some(parts));
+        assert_eq!(
+            axis.parse_slug("hash", "hash-1m-fast"),
+            Some(ModelVariantParts {
+                context: "1m".into(),
+                effort: None,
+                fast: true,
+            })
+        );
+        assert_eq!(axis.parse_slug("hash", "hash-1m-low"), None);
+        assert_eq!(
+            axis.default_parts(),
+            Some(ModelVariantParts {
+                context: "200k".into(),
+                effort: None,
+                fast: false,
+            })
+        );
+    }
+
+    #[test]
+    fn default_variant_prefers_the_catalog_defaults() {
+        // Same rule as the catalog default variant: context prefers 200k over the configured window, effort prefers high.
+        let axis = ModelVariantAxis {
+            context_options: vec!["272k".into(), "200k".into(), "1m".into()],
+            effort_options: vec!["low".into(), "high".into()],
+        };
+        assert_eq!(
+            axis.default_parts(),
+            Some(ModelVariantParts {
+                context: "200k".into(),
+                effort: Some("high".into()),
+                fast: false,
+            })
+        );
+        let without_preferred = ModelVariantAxis {
+            context_options: vec!["272k".into(), "1m".into()],
+            effort_options: vec!["low".into()],
+        };
+        assert_eq!(
+            without_preferred.default_parts(),
+            Some(ModelVariantParts {
+                context: "272k".into(),
+                effort: Some("low".into()),
+                fast: false,
+            })
+        );
+    }
+
+    #[test]
+    fn parameter_validation_normalizes_case_and_lists_valid_options() {
+        let axis = axis();
+        assert_eq!(axis.validate_effort("HIGH").unwrap(), "high");
+        assert_eq!(axis.validate_context("200000").unwrap(), "200k");
+        assert!(matches!(
+            axis.validate_effort("gone"),
+            Err(Error::Protocol(message)) if message.contains("low, high")
+        ));
+        assert!(matches!(
+            axis.validate_context("2m"),
+            Err(Error::Protocol(message)) if message.contains("200k, 1m")
+        ));
+        let no_effort = ModelVariantAxis {
+            context_options: vec!["200k".into()],
+            effort_options: Vec::new(),
+        };
+        assert!(no_effort.validate_effort("high").is_err());
     }
 }

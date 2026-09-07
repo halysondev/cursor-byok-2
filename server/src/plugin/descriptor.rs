@@ -286,7 +286,7 @@ pub fn parse_model_id(value: &str) -> Option<(&str, &str, &str)> {
 /// declare them — the host provides them uniformly and a user override replaces them
 /// entirely.
 const DEFAULT_EFFORT_OPTIONS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
-const DEFAULT_CONTEXT_OPTIONS: [&str; 5] = ["200k", "356k", "500k", "800k", "1m"];
+const DEFAULT_CONTEXT_OPTIONS: [&str; 4] = ["200k", "356k", "800k", "1m"];
 
 impl PluginModelDescriptor {
     pub fn new(
