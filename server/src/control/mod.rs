@@ -286,3 +286,78 @@ fn local_origin(origin: &HeaderValue) -> bool {
         None => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+
+    #[test]
+    fn control_cors_accepts_only_local_application_origins() {
+        for origin in [
+            "tauri://localhost",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://[::1]:3000",
+        ] {
+            assert!(
+                local_origin(&HeaderValue::from_str(origin).unwrap()),
+                "{origin}"
+            );
+        }
+        for origin in [
+            "https://example.com",
+            "http://192.168.1.10:3000",
+            "http://10.0.0.2",
+            "http://[fd00::1]:3000",
+        ] {
+            assert!(
+                !local_origin(&HeaderValue::from_str(origin).unwrap()),
+                "{origin}"
+            );
+        }
+    }
+
+    struct NullProvider;
+
+    impl crate::provider::Provider for NullProvider {
+        fn stream(
+            &self,
+            _invocation: crate::model::ModelInvocation,
+            _cancellation: tokio_util::sync::CancellationToken,
+        ) -> crate::provider::ProviderStream {
+            Box::pin(futures_util::stream::empty())
+        }
+    }
+
+    // axum reports overlapping routes only when the router is finalized into a
+    // service, so building it here catches duplicate registrations at test time.
+    #[tokio::test]
+    async fn api_router_has_no_overlapping_routes() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("routes.db").display()
+        ))
+        .await
+        .unwrap();
+        let plugin_runtime = crate::plugin::PluginRuntime::managed().unwrap();
+        let plugins = crate::plugin::PluginRegistry::managed(
+            store.clone(),
+            plugin_runtime.clone(),
+            "test".into(),
+        )
+        .unwrap();
+        let clients = crate::network::NetworkClients::new(store.clone());
+        let service = ControlService::new(
+            store,
+            Arc::new(NullProvider),
+            plugin_runtime,
+            plugins,
+            clients,
+        )
+        .unwrap();
+        let _service = api_router(service).into_make_service();
+    }
+}

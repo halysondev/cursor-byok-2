@@ -30,7 +30,7 @@ impl Store {
                 || alias.trim().is_empty()
                 || alias.trim() != alias
                 || alias.starts_with(crate::plugin::ADAPTER_ID_PREFIX)
-                || self.model(alias).await?.is_some()
+                || self.resolve_model(alias).await?.is_some()
             {
                 return Err(Error::Config(format!(
                     "invalid Cursor model alias: {alias}"

@@ -20,6 +20,49 @@ pub struct DecodedAppend {
 }
 
 impl DecodedAppend {
+    pub async fn resolve_model_aliases(&mut self, store: &crate::store::Store) -> Result<()> {
+        let Some(agent::agent_client_message::Message::RunRequest(request)) =
+            self.message.message.as_mut()
+        else {
+            return Ok(());
+        };
+        let aliases = store.cursor_model_aliases().await?;
+        let mut selections = Vec::new();
+        if let Some(model) = request.requested_model.as_mut() {
+            selections.push(&mut model.model_id);
+        }
+        if let Some(model) = request.model_details.as_mut() {
+            selections.push(&mut model.model_id);
+        }
+        for selection in &mut request.subagent_model_overrides {
+            if let Some(agent::subagent_model_override::Selection::Model(model)) =
+                selection.selection.as_mut()
+            {
+                selections.push(&mut model.model_id);
+            }
+        }
+        for selection in selections {
+            // Existing local selections (including plugin and model variants)
+            // take priority even if an alias was saved before they were added.
+            if selection.starts_with(crate::plugin::ADAPTER_ID_PREFIX)
+                || store.resolve_model(selection).await?.is_some()
+            {
+                continue;
+            }
+            if let Some(target) = aliases.get(selection) {
+                // A deleted/reconfigured target must not silently send the request
+                // (and its context) to the original hosted model instead.
+                if store.model(target).await?.is_none() {
+                    return Err(Error::Config(format!(
+                        "Cursor model alias {selection} targets a missing BYOK model"
+                    )));
+                }
+                selection.clone_from(target);
+            }
+        }
+        Ok(())
+    }
+
     pub fn model_id(&self) -> Option<&str> {
         let agent::agent_client_message::Message::RunRequest(request) =
             self.message.message.as_ref()?
@@ -47,48 +90,6 @@ impl DecodedAppend {
             return None;
         };
         request.conversation_id.as_deref()
-    }
-
-    /// Rewrites explicit Cursor model selections (requested model, model
-    /// details, and subagent overrides) that match a configured alias onto the
-    /// aliased BYOK model. Inheritance and request parameters are preserved.
-    pub async fn resolve_model_aliases(&mut self, store: &crate::store::Store) -> Result<()> {
-        let Some(agent::agent_client_message::Message::RunRequest(request)) =
-            self.message.message.as_mut()
-        else {
-            return Ok(());
-        };
-        let aliases = store.cursor_model_aliases().await?;
-        if aliases.is_empty() {
-            return Ok(());
-        }
-        let mut selections = Vec::new();
-        if let Some(model) = request.requested_model.as_mut() {
-            selections.push(&mut model.model_id);
-        }
-        if let Some(model) = request.model_details.as_mut() {
-            selections.push(&mut model.model_id);
-        }
-        for selection in &mut request.subagent_model_overrides {
-            if let Some(agent::subagent_model_override::Selection::Model(model)) =
-                selection.selection.as_mut()
-            {
-                selections.push(&mut model.model_id);
-            }
-        }
-        for selection in selections {
-            if let Some(target) = aliases.get(selection.as_str()) {
-                // A deleted/reconfigured target must not silently send the request
-                // (and its context) to the original hosted model instead.
-                if store.model(target).await?.is_none() {
-                    return Err(Error::Config(format!(
-                        "Cursor model alias {selection} targets a missing BYOK model"
-                    )));
-                }
-                selection.clone_from(target);
-            }
-        }
-        Ok(())
     }
 
     /// Subagent routing interception. When enabled in the settings, hosted
