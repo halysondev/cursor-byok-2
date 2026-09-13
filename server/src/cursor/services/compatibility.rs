@@ -105,6 +105,57 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn team_configuration_is_local_only_for_the_builtin_byok_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let proxy = CursorProxy::cursor(crate::network::NetworkClients::new(store));
+        for path in [
+            "/aiserver.v1.DashboardService/GetTeamReposOrEmptyIfNotInTeam",
+            "/aiserver.v1.DashboardService/GetTeamAdminSettingsOrEmptyIfNotInTeam",
+        ] {
+            let request = |authorization: &str| {
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header(header::AUTHORIZATION, authorization)
+                    // An invalid upstream target makes unintended forwarding fail
+                    // deterministically without contacting a real Cursor account.
+                    .header(
+                        crate::api::cursor::proxy::UPSTREAM_URL_HEADER,
+                        "http://127.0.0.1/invalid",
+                    )
+                    .body(Body::empty())
+                    .unwrap()
+            };
+            let response = team_configuration(
+                Extension(proxy.clone()),
+                request(&crate::local_app::local_cursor_authorization()),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            assert!(to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .is_empty());
+            let error = team_configuration(
+                Extension(proxy.clone()),
+                request("Bearer real-account-placeholder"),
+            )
+            .await
+            .unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("upstream URL must target a Cursor HTTPS host"));
+        }
+    }
+
+    #[tokio::test]
     async fn local_response_consumes_request_body_before_replying() {
         let polled = Arc::new(AtomicBool::new(false));
         let observed = polled.clone();

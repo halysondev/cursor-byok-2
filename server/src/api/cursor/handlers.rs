@@ -61,16 +61,16 @@ fn router_with_proxy(
             post(compatibility::effective_user_plugins),
         )
         .route(
-            "/aiserver.v1.DashboardService/GetUserPrivacyMode",
-            post(compatibility::user_privacy_mode),
-        )
-        .route(
             "/aiserver.v1.DashboardService/GetTeamReposOrEmptyIfNotInTeam",
             post(compatibility::team_configuration),
         )
         .route(
             "/aiserver.v1.DashboardService/GetTeamAdminSettingsOrEmptyIfNotInTeam",
             post(compatibility::team_configuration),
+        )
+        .route(
+            "/aiserver.v1.DashboardService/GetUserPrivacyMode",
+            post(compatibility::user_privacy_mode),
         )
         .route(
             "/agent.v1.AgentService/UpdateConversationMetadata",
