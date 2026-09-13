@@ -101,6 +101,13 @@ Mappings are exact and opt-in; no hosted models are redirected by default. The t
 
 ## Development and Contributing
 
+### Cursor CLI with local BYOK
+
+An opt-in [native Windows and macOS CLI launcher](./support/cursor-cli/README.md)
+reuses the running helper's model configurations, dynamic ports, and local
+identity. It keeps CLI settings separate and retains tool approval. This source
+launcher is not automatically installed by the desktop app.
+
 Issues and pull requests are welcome. See the [Contributing Guide](./CONTRIBUTING_EN.md) for prerequisites, build commands, project structure, and contribution guidelines.
 
 ## Contributors
