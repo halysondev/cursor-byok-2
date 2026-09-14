@@ -210,6 +210,11 @@ impl ModelConfig {
         if model.max_output_tokens.is_none() {
             model.max_output_tokens = self.max_output_tokens();
         }
+        if model.reasoning.explicitly_disabled {
+            model.reasoning.enabled = false;
+            model.reasoning.effort = None;
+            return;
+        }
         if model.reasoning.effort.is_none() {
             model.reasoning.effort = match self.model_type {
                 ModelType::OpenAi => self.reasoning_effort.clone(),
@@ -313,11 +318,16 @@ impl ModelVariantAxis {
             let (context, effort) = suffix.rsplit_once('-')?;
             (context, Some(effort))
         };
-        if !self.context_options.iter().any(|value| value == context) {
+        if !self.context_options.iter().any(|value| value == context)
+            && !(context.bytes().all(|byte| byte.is_ascii_digit())
+                && context.parse::<u64>().is_ok_and(|tokens| tokens > 0))
+        {
             return None;
         }
         if let Some(effort) = effort {
-            if !self.effort_options.iter().any(|value| value == effort) {
+            if !self.effort_options.iter().any(|value| value == effort)
+                && !matches!(effort, "none" | "off")
+            {
                 return None;
             }
         }
@@ -654,6 +664,8 @@ fn empty_object_ref() -> &'static serde_json::Value {
 pub struct ReasoningSpec {
     pub enabled: bool,
     pub effort: Option<String>,
+    #[serde(default)]
+    pub explicitly_disabled: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

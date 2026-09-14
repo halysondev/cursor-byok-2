@@ -45,6 +45,7 @@ fn exec_context() -> ExecContext {
         default_subagent_model_variant: None,
         model_directory: Default::default(),
         subagent_models: std::collections::HashMap::new(),
+        child_models: std::collections::HashMap::new(),
         terminals_folder: "/tmp/terminals".into(),
         admin_command_denylist: Vec::new(),
         allow_subagents: true,
