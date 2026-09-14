@@ -457,6 +457,40 @@ impl ConversationRuntime {
                                             )
                                             .await;
                                         }
+                                        Some(
+                                            pb::conversation_action::Action::BackgroundTaskCompletionAction(_),
+                                        ) => {
+                                            let Some(previous) = current.as_ref() else {
+                                                let error = crate::Error::Protocol(
+                                                    "background completion arrived before RunRequest".into(),
+                                                );
+                                                let _ = super::finish_failed(&handle, &error);
+                                                return;
+                                            };
+                                            let mut request = previous.request.clone();
+                                            request.action = Some(conversation_action);
+                                            request.conversation_state = handle
+                                                .latest_checkpoint()
+                                                .or(request.conversation_state);
+                                            waiting_for_action = false;
+                                            if draining {
+                                                handle.reopen();
+                                                draining = false;
+                                                pending_finish = None;
+                                            }
+                                            start_generation(
+                                                &registry,
+                                                &handle,
+                                                &dependencies,
+                                                &blob_sync,
+                                                &context_sync,
+                                                &tool_runtime_factory,
+                                                &mut current,
+                                                &mut next_generation,
+                                                request,
+                                            )
+                                            .await;
+                                        }
                                         Some(pb::conversation_action::Action::CancelAction(_)) => {
                                             if let Some(generation) = current.as_ref() {
                                                 if let Some(run) = generation.run.lock().clone() {
@@ -734,6 +768,15 @@ fn spawn_run_request(
                 return;
             }
         };
+        let completion_start = if terminal_completions.is_some() {
+            Some(tokio::select! {
+                biased;
+                _ = generation.superseded.cancelled() => return,
+                guard = registry.lock_completion_start(&conversation_id) => guard,
+            })
+        } else {
+            None
+        };
         if let Some(completions) = terminal_completions.as_deref() {
             match dependencies
                 .store
@@ -741,6 +784,9 @@ fn spawn_run_request(
                 .await
             {
                 Ok(true) => {
+                    registry
+                        .discard_pending_completions(&conversation_id, completions)
+                        .await;
                     let _ = handle
                         .command(TransportCommand::RunFinished {
                             generation: generation.id,
@@ -835,6 +881,31 @@ fn spawn_run_request(
                 return;
             }
         };
+        // Hydration can restore durable completion receipts from an IDE checkpoint.
+        if let Some(completions) = terminal_completions.as_deref() {
+            let processed = dependencies
+                .store
+                .background_completions_processed(&conversation_id, completions)
+                .await;
+            if !matches!(processed, Ok(false)) {
+                let finish = match processed {
+                    Ok(_) => {
+                        registry
+                            .discard_pending_completions(&conversation_id, completions)
+                            .await;
+                        TransportFinish::Success
+                    }
+                    Err(error) => TransportFinish::Failed(error),
+                };
+                let _ = handle
+                    .command(TransportCommand::RunFinished {
+                        generation: generation.id,
+                        finish: RunFinish::Transport(finish),
+                    })
+                    .await;
+                return;
+            }
+        }
         checkpoint.configure(
             prepared.model.model_id.clone(),
             prepared.model.context_window_tokens,
@@ -872,12 +943,42 @@ fn spawn_run_request(
                     }
                     return;
                 }
-                CommandResult::RunClosing => {
+                CommandResult::RunClosing | CommandResult::RunEnded => {
                     prepared.initial_messages.clear();
                     tokio::select! {
                         biased;
                         _ = generation.superseded.cancelled() => return,
                         _ = registry.wait_until_idle(&prepared.conversation_id) => {}
+                    }
+                    // The previous run may have committed successful processing while
+                    // this delivery waited at its finalization boundary.
+                    let processed = dependencies
+                        .store
+                        .background_completions_processed(
+                            &conversation_id,
+                            terminal_completions.as_deref().unwrap_or_default(),
+                        )
+                        .await;
+                    if !matches!(processed, Ok(false)) {
+                        let finish = match processed {
+                            Ok(_) => {
+                                registry
+                                    .discard_pending_completions(
+                                        &conversation_id,
+                                        terminal_completions.as_deref().unwrap_or_default(),
+                                    )
+                                    .await;
+                                TransportFinish::Success
+                            }
+                            Err(error) => TransportFinish::Failed(error),
+                        };
+                        let _ = handle
+                            .command(TransportCommand::RunFinished {
+                                generation: generation.id,
+                                finish: RunFinish::Transport(finish),
+                            })
+                            .await;
+                        return;
                     }
                     if let Ok(checkpoint) = dependencies
                         .store
@@ -886,9 +987,6 @@ fn spawn_run_request(
                     {
                         prepared.base_checkpoint_id = checkpoint;
                     }
-                }
-                CommandResult::RunEnded => {
-                    prepared.initial_messages.clear();
                 }
                 CommandResult::StaleTarget => {
                     if !generation.superseded.is_cancelled() {
@@ -943,6 +1041,7 @@ fn spawn_run_request(
         let cancellation = run_handle.cancellation();
         let engine = RunEngine::new(dependencies.store.clone(), dependencies.provider.clone());
         let core_run = tokio::spawn(async move { engine.run(prepared, port, cancellation).await });
+        drop(completion_start);
         let output = ConversationOutput::new(
             handle.clone(),
             dependencies.store.clone(),
