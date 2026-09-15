@@ -184,6 +184,7 @@ pub(crate) async fn prepare(
     let mut model = model::requested_model(request)?;
     let requested_model_id = model.model_id.clone();
     let mut selected_axis = None;
+    let mut variant_applied = false;
     if let Some(configured_model) = store.resolve_model(&model.model_id).await? {
         model.model_id = configured_model.model_hash.clone();
         configured_model.configure(&mut model);
@@ -192,20 +193,32 @@ pub(crate) async fn prepare(
             .parse_slug(&configured_model.model_hash, &requested_model_id)
         {
             apply_variant_parts(&mut model, parts);
+            variant_applied = true;
         }
         selected_axis = Some(configured_model.variant_axis());
     } else if let Some((descriptor, axis, parts)) =
         resolve_plugin_model(&plugin_models, &requested_model_id)
     {
         model.model_id = descriptor.id.clone();
-        if let Some(parts) = parts {
-            apply_variant_parts(&mut model, parts);
+        match parts {
+            Some(parts) => {
+                apply_variant_parts(&mut model, parts);
+                variant_applied = true;
+            }
+            // Plugin models have no configure() fallback: a bare id is filled per the catalog default variant.
+            None => apply_plugin_defaults(&mut model, &axis),
         }
         selected_axis = Some(axis);
     }
-    // Explicit parameters override both saved defaults and the selected variant.
-    if let Some(requested) = request.requested_model.as_ref() {
-        model::apply_requested_parameters(&mut model, requested)?;
+    // Explicit parameters override saved defaults; in a root session they also
+    // override the selected variant (model-picker gear shift). A subagent's
+    // variant slug is baked by the parent's Task call and is already the
+    // authoritative choice, so the parameters echoed back by Cursor must not
+    // rewrite it.
+    if !variant_applied || request.subagent_type_name.is_none() {
+        if let Some(requested) = request.requested_model.as_ref() {
+            model::apply_requested_parameters(&mut model, requested)?;
+        }
     }
     let inherited_subagent_model_variant = selected_axis
         .as_ref()
@@ -450,7 +463,10 @@ pub(crate) async fn prepare(
     ))
 }
 
-/// Applies the tier resolved from a variant slug to a ModelSpec; shared by both model sources (built-in/plugin).
+/// Applies the tiers resolved from a variant slug to a ModelSpec; shared by both
+/// model sources (built-in/plugin). All three axes (context/effort/fast) are
+/// pinned when the slug is baked, so the subagent path can safely skip a second
+/// application of the returned parameters.
 fn apply_variant_parts(model: &mut ModelSpec, parts: ModelVariantParts) {
     if let Some(tokens) = crate::model::parse_token_count(&parts.context) {
         model.context_window_tokens = Some(tokens);
@@ -460,9 +476,28 @@ fn apply_variant_parts(model: &mut ModelSpec, parts: ModelVariantParts) {
         model.reasoning.enabled = !model.reasoning.explicitly_disabled;
         model.reasoning.effort = model.reasoning.enabled.then_some(effort);
     }
-    if parts.fast {
-        model.latency = crate::model::ModelLatency::Fast;
+    model.latency = if parts.fast {
+        crate::model::ModelLatency::Fast
+    } else {
+        crate::model::ModelLatency::Standard
+    };
+}
+
+/// Plugin models have no configure() fallback: a bare-id request is filled with
+/// the catalog default variant's context/effort; values explicitly carried by
+/// the request and explicitly disabled reasoning take priority.
+fn apply_plugin_defaults(model: &mut ModelSpec, axis: &ModelVariantAxis) {
+    let Some(defaults) = axis.default_parts() else {
+        return;
+    };
+    if model.context_window_tokens.is_none() {
+        model.context_window_tokens = crate::model::parse_token_count(&defaults.context);
     }
+    if model.reasoning.explicitly_disabled || model.reasoning.effort.is_some() {
+        return;
+    }
+    model.reasoning.effort = defaults.effort;
+    model.reasoning.enabled |= model.reasoning.effort.is_some();
 }
 
 /// A plugin model's variant axis: there is no configured window, so the axis is the descriptor's effective tiers (with user overrides already folded in).
@@ -1105,6 +1140,37 @@ mod tests {
             effort_options: vec!["low".into(), "high".into()],
             context_options: vec!["200k".into(), "1m".into()],
         }
+    }
+
+    #[test]
+    fn plugin_bare_id_fills_catalog_default_variant() {
+        let axis = plugin_variant_axis(&plugin_model());
+        let mut selected = crate::model::ModelSpec::new("plugin/codex/gpt-5");
+
+        apply_plugin_defaults(&mut selected, &axis);
+
+        assert_eq!(selected.context_window_tokens, Some(200_000));
+        assert_eq!(selected.reasoning.effort.as_deref(), Some("high"));
+        assert!(selected.reasoning.enabled);
+    }
+
+    #[test]
+    fn plugin_defaults_keep_explicit_request_values_and_disablement() {
+        let axis = plugin_variant_axis(&plugin_model());
+        let mut selected = crate::model::ModelSpec::new("plugin/codex/gpt-5");
+        selected.context_window_tokens = Some(1_000_000);
+        selected.reasoning.effort = Some("low".into());
+
+        apply_plugin_defaults(&mut selected, &axis);
+
+        assert_eq!(selected.context_window_tokens, Some(1_000_000));
+        assert_eq!(selected.reasoning.effort.as_deref(), Some("low"));
+
+        let mut disabled = crate::model::ModelSpec::new("plugin/codex/gpt-5");
+        disabled.reasoning.explicitly_disabled = true;
+        apply_plugin_defaults(&mut disabled, &axis);
+        assert_eq!(disabled.reasoning.effort, None);
+        assert!(!disabled.reasoning.enabled);
     }
 
     #[test]

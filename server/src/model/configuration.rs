@@ -305,8 +305,17 @@ impl ModelVariantAxis {
         })
     }
 
-    /// Parses a variant slug of the form {hash}-{context}[-{effort}][-fast].
+    /// Parses a variant reference: both the hyphen slug {hash}-{context}[-{effort}][-fast]
+    /// and the catalog's bracket notation {hash}[context=..,reasoning=..,fast=..]
+    /// are accepted and validated identically.
     pub fn parse_slug(&self, hash: &str, key: &str) -> Option<ModelVariantParts> {
+        if let Some(body) = key
+            .strip_prefix(hash)
+            .and_then(|rest| rest.strip_prefix('['))
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            return self.parse_variant_body(body);
+        }
         let suffix = key.strip_prefix(&format!("{hash}-"))?;
         let (suffix, fast) = match suffix.strip_suffix("-fast") {
             Some(suffix) => (suffix, true),
@@ -318,16 +327,11 @@ impl ModelVariantAxis {
             let (context, effort) = suffix.rsplit_once('-')?;
             (context, Some(effort))
         };
-        if !self.context_options.iter().any(|value| value == context)
-            && !(context.bytes().all(|byte| byte.is_ascii_digit())
-                && context.parse::<u64>().is_ok_and(|tokens| tokens > 0))
-        {
+        if !self.accepts_context(context) {
             return None;
         }
         if let Some(effort) = effort {
-            if !self.effort_options.iter().any(|value| value == effort)
-                && !matches!(effort, "none" | "off")
-            {
+            if !self.accepts_effort(effort) {
                 return None;
             }
         }
@@ -336,6 +340,49 @@ impl ModelVariantAxis {
             effort: effort.map(str::to_string),
             fast,
         })
+    }
+
+    /// The bracket body is comma-separated id=value pairs; context is required,
+    /// unknown ids are ignored.
+    fn parse_variant_body(&self, body: &str) -> Option<ModelVariantParts> {
+        let mut context = None;
+        let mut effort = None;
+        let mut fast = false;
+        for pair in body.split(',') {
+            let (id, value) = pair.split_once('=')?;
+            match id {
+                "context" => context = Some(value),
+                "reasoning" | "effort" => effort = Some(value),
+                "fast" => fast = value == "true",
+                _ => {}
+            }
+        }
+        let context = context?;
+        if !self.accepts_context(context) {
+            return None;
+        }
+        if let Some(effort) = effort {
+            if !self.accepts_effort(effort) {
+                return None;
+            }
+        }
+        Some(ModelVariantParts {
+            context: context.into(),
+            effort: effort.map(str::to_string),
+            fast,
+        })
+    }
+
+    fn accepts_context(&self, context: &str) -> bool {
+        self.context_options.iter().any(|value| value == context)
+            || (context.bytes().all(|byte| byte.is_ascii_digit())
+                && context.parse::<u64>().is_ok_and(|tokens| tokens > 0))
+    }
+
+    fn accepts_effort(&self, effort: &str) -> bool {
+        !self.effort_options.is_empty()
+            && (self.effort_options.iter().any(|value| value == effort)
+                || matches!(effort, "none" | "off"))
     }
 
     /// Bakes a variant slug; without a reasoning axis it has no effort segment.
@@ -954,6 +1001,54 @@ mod tests {
                 effort: None,
                 fast: false,
             })
+        );
+    }
+
+    #[test]
+    fn variant_slug_parses_the_catalog_bracket_representation() {
+        let axis = axis();
+        assert_eq!(
+            axis.parse_slug("hash", "hash[context=1m,reasoning=low,fast=true]"),
+            Some(ModelVariantParts {
+                context: "1m".into(),
+                effort: Some("low".into()),
+                fast: true,
+            })
+        );
+        assert_eq!(
+            axis.parse_slug("hash", "hash[context=200k,reasoning=high,fast=false]"),
+            Some(ModelVariantParts {
+                context: "200k".into(),
+                effort: Some("high".into()),
+                fast: false,
+            })
+        );
+        // Same rule as the hyphen slug: the tier must land on the axis.
+        assert_eq!(
+            axis.parse_slug("hash", "hash[context=2m,reasoning=low,fast=false]"),
+            None
+        );
+        assert_eq!(
+            axis.parse_slug("hash", "hash[context=1m,reasoning=gone,fast=false]"),
+            None
+        );
+        assert_eq!(axis.parse_slug("hash", "hash[reasoning=low]"), None);
+
+        let no_effort = ModelVariantAxis {
+            context_options: vec!["200k".into(), "1m".into()],
+            effort_options: Vec::new(),
+        };
+        assert_eq!(
+            no_effort.parse_slug("hash", "hash[context=1m,fast=false]"),
+            Some(ModelVariantParts {
+                context: "1m".into(),
+                effort: None,
+                fast: false,
+            })
+        );
+        assert_eq!(
+            no_effort.parse_slug("hash", "hash[context=1m,reasoning=low,fast=false]"),
+            None
         );
     }
 
