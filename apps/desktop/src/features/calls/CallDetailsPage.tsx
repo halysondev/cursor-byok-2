@@ -26,14 +26,14 @@ export function CallDetailsPage() {
   }, [callId]);
 
   const content = error
-    ? <TitledCard title={t("无法加载调用详情")}><div style={{ padding: 16 }}>{error}</div></TitledCard>
+    ? <TitledCard title={"Unable to load call details"}><div style={{ padding: 16 }}>{error}</div></TitledCard>
     : detail
       ? <CallDetails detail={detail} />
-      : <TitledCard title={t("调用详情")}><div style={{ padding: 16 }}>{t("正在加载调用详情…")}</div></TitledCard>;
+      : <TitledCard title={"Call details"}><div style={{ padding: 16 }}>{"Loading call details…"}</div></TitledCard>;
 
   return <main className={styles.root}>
     <ScrollableContent className={styles.scroller} contentClassName={styles.content}>
-      <h1>{detail?.call.display_name ?? t("调用详情")}</h1>
+      <h1>{detail?.call.display_name ?? "Call details"}</h1>
       {content}
     </ScrollableContent>
   </main>;

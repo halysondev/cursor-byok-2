@@ -59,7 +59,7 @@ function AppMessages() {
       const previousVersion = updateStore.getSnapshot().availableVersion;
       void updateStore.check().then((version) => {
         if (disposed || !version || version === previousVersion) return;
-        showMessage(t("发现新版本 {version}，可在设置中安装", { version }), { duration: 6_000 });
+        showMessage(`Version ${version} is available in Settings`, { duration: 6_000 });
       }).catch(() => {
         if (!disposed) lastAutomaticUpdateCheckAt.current = 0;
         // Automatic checks are best-effort; manual checks in Settings report errors.

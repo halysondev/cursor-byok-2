@@ -1,10 +1,10 @@
 import type { JsonValue, PluginContext } from "../plugin.ts";
 import type { LlmContentPart, LlmRequest, ModelEvent, ProviderOutput } from "../provider.ts";
 
-/** 本协议产生的回放状态种类;与宿主内置 Chat Provider 一致,可互相回放。 */
+/** Replay-state kinds produced by this protocol; identical to the host's built-in Chat Provider, so they can replay each other. */
 export const REPLAY_KIND = "openai_chat";
 
-/** 上游返回非 2xx 时抛出,携带完整响应体供调用方分类。 */
+/** Thrown when upstream returns non-2xx, carrying the full response body so callers can classify it. */
 export class HttpError extends Error {
   constructor(readonly status: number, readonly body: string) {
     super(`HTTP ${status}: ${body}`);
@@ -16,7 +16,7 @@ export type OpenAiChatCall = {
   model: string;
   request: LlmRequest;
   headers?: Record<string, string>;
-  /** 最后合并进请求体。 */
+  /** Merged into the request body last. */
   extraBody?: Record<string, JsonValue>;
 };
 
@@ -34,7 +34,7 @@ function count(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** 纯文本消息保持字符串形式;混合图片时展开为分块数组。 */
+/** Plain-text messages stay strings; messages mixing in images expand into a parts array. */
 function chatContent(parts: LlmContentPart[]): JsonValue {
   if (parts.every((part) => part.type === "text")) {
     return parts.map((part) => part.type === "text" ? part.text : "").join("");
@@ -57,8 +57,8 @@ export function buildChatBody(call: OpenAiChatCall): Record<string, JsonValue> {
       const reasoning = message.replayState?.providerKind === REPLAY_KIND
         ? text(record(message.replayState.value)?.reasoning_content)
         : null;
-      // Chat Completions 拒绝空字符串的 assistant content;完全无可见
-      // 内容的 assistant 消息不需要发送。
+      // Chat Completions rejects an assistant message with empty-string content; an assistant
+      // message with no visible content at all does not need to be sent.
       if (!message.text && message.toolCalls.length === 0 && !reasoning) continue;
       const value: Record<string, JsonValue> = {
         role: "assistant",
@@ -114,7 +114,7 @@ type ToolState = {
   started: boolean;
 };
 
-/** 部分上游会重发完整片段而不是增量;去重后再拼接。 */
+/** Some upstreams resend the full segment instead of a delta; deduplicate before appending. */
 function mergeFragment(target: string, fragment: string): string {
   if (target === fragment || target.endsWith(fragment)) return target;
   if (fragment.startsWith(target)) return fragment;
@@ -189,9 +189,10 @@ async function readBody(lines: AsyncIterable<string>): Promise<string> {
 }
 
 /**
- * 执行一次 Chat Completions 流式调用,发出与宿主统一事件集一致的标准化事件,
- * 包括文本/思考边界与工具参数增量。非 2xx 响应抛出 `HttpError`,
- * 流内失败抛出 `Error`,由调用方分类额度与授权问题。
+ * Runs one Chat Completions streaming call, emitting normalized events matching the host's
+ * unified event set, including text/thinking boundaries and tool-argument deltas. A non-2xx
+ * response throws `HttpError`; a mid-stream failure throws `Error`. Callers classify quota
+ * and authorization problems.
  */
 export async function streamOpenAiChat(
   call: OpenAiChatCall,

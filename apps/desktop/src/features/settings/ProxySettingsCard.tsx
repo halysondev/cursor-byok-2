@@ -26,53 +26,53 @@ export function ProxySettingsCard({
   onSave: () => void;
 }) {
   const custom = draft.mode === "custom";
-  const modeLabel = (mode: ProxySettingsInput["mode"]) => mode === "default" ? t("默认") : t("自定义");
+  const modeLabel = (mode: ProxySettingsInput["mode"]) => mode === "default" ? "Default" : "Custom";
   const action = editing ? (
     <div className={styles.actionGroup}>
-      <Button size="small" disabled={saving} onClick={onCancel}>{t("取消")}</Button>
-      <Button variant="primary" size="small" disabled={saving} onClick={onSave}>{saving ? t("保存中…") : t("保存")}</Button>
+      <Button size="small" disabled={saving} onClick={onCancel}>{"Cancel"}</Button>
+      <Button variant="primary" size="small" disabled={saving} onClick={onSave}>{saving ? "Saving…" : "Save"}</Button>
     </div>
   ) : (
     <button type="button" className={styles.headerAction} disabled={!settings} onClick={onEdit}>
-      {t("编辑")}
+      {"Edit"}
     </button>
   );
 
-  return <TitledCard title={t("代理设置")} action={action}>
+  return <TitledCard title={"Proxy settings"} action={action}>
     <div className={styles.content}>
       {editing ? <>
         <div className={styles.row}>
-          <strong>{t("代理方式")}</strong>
-          <div className={styles.control}><Select ariaLabel={t("代理方式")} value={draft.mode} options={[{ value: "default", label: t("默认") }, { value: "custom", label: t("自定义") }]} onChange={(mode) => onDraftChange({ ...draft, mode: mode as ProxySettingsInput["mode"] })} /></div>
+          <strong>{"Proxy mode"}</strong>
+          <div className={styles.control}><Select ariaLabel={"Proxy mode"} value={draft.mode} options={[{ value: "default", label: "Default" }, { value: "custom", label: "Custom" }]} onChange={(mode) => onDraftChange({ ...draft, mode: mode as ProxySettingsInput["mode"] })} /></div>
         </div>
         {custom && <div className={styles.customFields}>
           <div className={styles.row}>
-            <strong>{t("代理地址")}</strong>
+            <strong>{"Proxy address"}</strong>
             <div className={styles.control}><TextInput value={draft.address} placeholder="http://127.0.0.1:7890" onChange={(event) => onDraftChange({ ...draft, address: event.target.value })} /></div>
           </div>
           <div className={styles.row}>
-            <strong>{t("认证")}</strong>
-            <Checkbox checked={draft.auth_enabled} label={t("代理需要认证")} onChange={(auth_enabled) => onDraftChange({ ...draft, auth_enabled })} />
+            <strong>{"Authentication"}</strong>
+            <Checkbox checked={draft.auth_enabled} label={"Proxy requires authentication"} onChange={(auth_enabled) => onDraftChange({ ...draft, auth_enabled })} />
           </div>
           {draft.auth_enabled && <div className={styles.customFields}>
             <div className={styles.row}>
-              <strong>{t("用户名")}</strong>
+              <strong>{"Username"}</strong>
               <div className={styles.control}><TextInput value={draft.username} autoComplete="off" onChange={(event) => onDraftChange({ ...draft, username: event.target.value })} /></div>
             </div>
             <div className={styles.row}>
-              <strong>{t("密码")}</strong>
-              <div className={styles.control}><TextInput type="password" value={draft.password ?? ""} autoComplete="new-password" placeholder={settings?.has_password ? t("留空表示保留当前密码") : ""} onChange={(event) => onDraftChange({ ...draft, password: event.target.value })} /></div>
+              <strong>{"Password"}</strong>
+              <div className={styles.control}><TextInput type="password" value={draft.password ?? ""} autoComplete="new-password" placeholder={settings?.has_password ? "Leave blank to keep the current password" : ""} onChange={(event) => onDraftChange({ ...draft, password: event.target.value })} /></div>
             </div>
           </div>}
         </div>}
       </> : <>
-        <div className={styles.row}><strong>{t("代理方式")}</strong><span className={styles.value}>{settings ? modeLabel(settings.mode) : t("加载中…")}</span></div>
+        <div className={styles.row}><strong>{"Proxy mode"}</strong><span className={styles.value}>{settings ? modeLabel(settings.mode) : "Loading…"}</span></div>
         {settings?.mode === "custom" && <div className={styles.customFields}>
-          <div className={styles.row}><strong>{t("代理地址")}</strong><span className={styles.value}>{settings.address}</span></div>
-          <div className={styles.row}><strong>{t("认证")}</strong><span className={styles.value}>{settings.auth_enabled ? t("已启用") : t("未启用")}</span></div>
+          <div className={styles.row}><strong>{"Proxy address"}</strong><span className={styles.value}>{settings.address}</span></div>
+          <div className={styles.row}><strong>{"Authentication"}</strong><span className={styles.value}>{settings.auth_enabled ? "Enabled" : "Disabled"}</span></div>
           {settings.auth_enabled && <>
-            <div className={styles.row}><strong>{t("用户名")}</strong><span className={styles.value}>{settings.username || "—"}</span></div>
-            <div className={styles.row}><strong>{t("密码")}</strong><span className={styles.value}>{settings.has_password ? t("已设置") : t("未设置")}</span></div>
+            <div className={styles.row}><strong>{"Username"}</strong><span className={styles.value}>{settings.username || "—"}</span></div>
+            <div className={styles.row}><strong>{"Password"}</strong><span className={styles.value}>{settings.has_password ? "Set" : "Not set"}</span></div>
           </>}
         </div>}
       </>}

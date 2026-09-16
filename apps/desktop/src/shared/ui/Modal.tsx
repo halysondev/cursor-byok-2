@@ -39,7 +39,7 @@ function focusableElements(root: HTMLElement) {
     .filter((element) => element.getClientRects().length > 0);
 }
 
-export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), submitLabel = t("保存"), submitDisabled = false }: ModalProps) {
+export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = "Cancel", submitLabel = "Save", submitDisabled = false }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(onClose);
@@ -97,7 +97,7 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
       <footer>
         <button type="button" className={controls.primary} disabled={busy} onClick={onClose}>{closeLabel}</button>
         {secondaryAction}
-        {onSubmit && <button ref={submitButton} type="button" className={controls.primary} disabled={busy || submitDisabled} onClick={onSubmit}>{busy ? t("处理中…") : submitLabel}</button>}
+        {onSubmit && <button ref={submitButton} type="button" className={controls.primary} disabled={busy || submitDisabled} onClick={onSubmit}>{busy ? "Processing…" : submitLabel}</button>}
       </footer>
     </div>
   </div>, document.body);

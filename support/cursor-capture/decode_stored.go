@@ -1,4 +1,4 @@
-// decode_stored.go 负责从持久化捕获记录恢复文本、帧和 protobuf 视图。
+// decode_stored.go restores text, frame, and protobuf views from persisted capture records.
 package main
 
 import (
@@ -24,7 +24,7 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-// decodeCapturedContent 按内容类型和压缩编码生成可读正文视图。
+// decodeCapturedContent produces a readable body view based on content type and compression.
 func decodeCapturedContent(payload []byte, contentType, codec string) (string, string, error) {
 	decoded, err := decodeHTTPContent(payload, codec)
 	if err != nil {
@@ -57,12 +57,12 @@ func decodeCapturedContent(payload []byte, contentType, codec string) (string, s
 	}
 	language := textLanguage(mediaType)
 	if strings.HasSuffix(mediaType, "+json") || mediaType == "application/json" {
-		return string(decoded), "json", fmt.Errorf("JSON 正文格式无效")
+		return string(decoded), "json", fmt.Errorf("invalid JSON body")
 	}
 	return string(decoded), language, nil
 }
 
-// decodeHTTPContent 解压 HTTP 内容编码并返回正文副本。
+// decodeHTTPContent decompresses the HTTP content encoding and returns the body copy.
 func decodeHTTPContent(payload []byte, codec string) ([]byte, error) {
 	encodings := strings.Split(strings.TrimSpace(codec), ",")
 	decoded := payload
@@ -79,37 +79,37 @@ func decodeHTTPContent(payload []byte, codec string) ([]byte, error) {
 		case "deflate":
 			reader, err := zlib.NewReader(bytes.NewReader(decoded))
 			if err != nil {
-				return nil, fmt.Errorf("deflate 解压失败：%w", err)
+				return nil, fmt.Errorf("deflate decompression failed: %w", err)
 			}
 			result, readErr := io.ReadAll(io.LimitReader(reader, maxConnectFrameBytes+1))
 			closeErr := reader.Close()
 			if readErr != nil {
-				return nil, fmt.Errorf("读取 deflate 内容失败：%w", readErr)
+				return nil, fmt.Errorf("failed to read deflate content: %w", readErr)
 			}
 			if closeErr != nil {
-				return nil, fmt.Errorf("关闭 deflate 内容失败：%w", closeErr)
+				return nil, fmt.Errorf("failed to close deflate content: %w", closeErr)
 			}
 			if len(result) > maxConnectFrameBytes {
-				return nil, fmt.Errorf("deflate 解压后超过 %d 字节限制", maxConnectFrameBytes)
+				return nil, fmt.Errorf("deflate content exceeded the %d byte limit", maxConnectFrameBytes)
 			}
 			decoded = result
 		case "br":
 			result, readErr := io.ReadAll(io.LimitReader(brotli.NewReader(bytes.NewReader(decoded)), maxConnectFrameBytes+1))
 			if readErr != nil {
-				return nil, fmt.Errorf("读取 Brotli 内容失败：%w", readErr)
+				return nil, fmt.Errorf("failed to read Brotli content: %w", readErr)
 			}
 			if len(result) > maxConnectFrameBytes {
-				return nil, fmt.Errorf("Brotli 解压后超过 %d 字节限制", maxConnectFrameBytes)
+				return nil, fmt.Errorf("Brotli content exceeded the %d byte limit", maxConnectFrameBytes)
 			}
 			decoded = result
 		default:
-			return nil, fmt.Errorf("暂不支持内容编码 %q", encoding)
+			return nil, fmt.Errorf("unsupported content encoding %q", encoding)
 		}
 	}
 	return decoded, nil
 }
 
-// normalizedMediaType 删除参数并统一媒体类型大小写。
+// normalizedMediaType strips parameters and normalizes media type case.
 func normalizedMediaType(contentType string) string {
 	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
 	if err == nil {
@@ -118,12 +118,12 @@ func normalizedMediaType(contentType string) string {
 	return strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
 }
 
-// isProtoContentType 判断媒体类型是否表示 protobuf 二进制。
+// isProtoContentType reports whether the media type denotes protobuf binary.
 func isProtoContentType(contentType string) bool {
 	return strings.Contains(normalizedMediaType(contentType), "proto")
 }
 
-// isTextMediaType 判断媒体类型是否适合直接作为文本展示。
+// isTextMediaType reports whether the media type is suitable for direct text display.
 func isTextMediaType(mediaType string) bool {
 	return strings.HasPrefix(mediaType, "text/") || strings.HasSuffix(mediaType, "+json") ||
 		strings.HasSuffix(mediaType, "+xml") || mediaType == "application/json" ||
@@ -131,7 +131,7 @@ func isTextMediaType(mediaType string) bool {
 		mediaType == "application/x-javascript" || mediaType == "application/graphql"
 }
 
-// textLanguage 为前端编辑器选择文本语言。
+// textLanguage picks the text language for the frontend editor.
 func textLanguage(mediaType string) string {
 	switch {
 	case strings.Contains(mediaType, "json"):
@@ -149,11 +149,11 @@ func textLanguage(mediaType string) string {
 	}
 }
 
-// decodeStoredConnectFrames 从持久化十六进制载荷恢复流式帧。
+// decodeStoredConnectFrames restores streaming frames from the persisted hex payload.
 func decodeStoredConnectFrames(rawHexValue, messageType, codec string) ([]FrameView, error) {
 	payload, err := hex.DecodeString(strings.TrimSpace(rawHexValue))
 	if err != nil {
-		return nil, fmt.Errorf("解析已存储 Connect 正文失败：%w", err)
+		return nil, fmt.Errorf("failed to parse the stored Connect body: %w", err)
 	}
 	frames := make([]FrameView, 0)
 	decoder := newConnectFrameDecoder(messageType, codec, defaultMaxFrames, func(frame FrameView) {
@@ -164,17 +164,17 @@ func decodeStoredConnectFrames(rawHexValue, messageType, codec string) ([]FrameV
 	return frames, nil
 }
 
-// isUnaryProtoContentType 判断媒体类型是否为可直接解码的 protobuf。
+// isUnaryProtoContentType reports whether the media type is directly decodable protobuf.
 func isUnaryProtoContentType(contentType string) bool {
 	mediaType := normalizedMediaType(contentType)
 	return mediaType == "application/proto" || mediaType == "application/protobuf" || mediaType == "application/x-protobuf"
 }
 
-// decodeStoredRawPayload 解码持久化原始载荷并应用压缩处理。
+// decodeStoredRawPayload decodes the persisted raw payload, applying compression handling.
 func decodeStoredRawPayload(rawHexValue, codec string) ([]byte, error) {
 	payload, err := hex.DecodeString(strings.TrimSpace(rawHexValue))
 	if err != nil {
-		return nil, fmt.Errorf("解析已存储正文失败：%w", err)
+		return nil, fmt.Errorf("failed to parse the stored body: %w", err)
 	}
 	if codec == "" || strings.EqualFold(codec, "identity") {
 		return payload, nil
@@ -182,7 +182,7 @@ func decodeStoredRawPayload(rawHexValue, codec string) ([]byte, error) {
 	return decompressPayload(payload, codec)
 }
 
-// unaryRequestMessage 根据 RPC 路径创建请求消息和稳定类型名。
+// unaryRequestMessage creates the request message and a stable type name from the RPC path.
 func unaryRequestMessage(path string) (proto.Message, string) {
 	switch path {
 	case forkBackgroundComposerPath:
@@ -212,7 +212,7 @@ func unaryRequestMessage(path string) (proto.Message, string) {
 	}
 }
 
-// unaryResponseMessage 根据 RPC 路径创建响应消息和稳定类型名。
+// unaryResponseMessage creates the response message and a stable type name from the RPC path.
 func unaryResponseMessage(path string) (proto.Message, string) {
 	switch path {
 	case forkBackgroundComposerPath:
@@ -242,7 +242,7 @@ func unaryResponseMessage(path string) (proto.Message, string) {
 	}
 }
 
-// streamingRequestMessageType 返回流式请求的 protobuf 类型名。
+// streamingRequestMessageType returns the protobuf type name for streaming requests.
 func streamingRequestMessageType(path string) string {
 	if path == runSSEPath {
 		return "aiserver.v1.BidiRequestId"
@@ -254,7 +254,7 @@ func streamingRequestMessageType(path string) string {
 	return string(method.Input().FullName())
 }
 
-// streamingResponseMessageType 返回流式响应的 protobuf 类型名。
+// streamingResponseMessageType returns the protobuf type name for streaming responses.
 func streamingResponseMessageType(path string) string {
 	if path == runSSEPath {
 		return "agent.v1.AgentServerMessage"
@@ -266,7 +266,7 @@ func streamingResponseMessageType(path string) string {
 	return string(method.Output().FullName())
 }
 
-// decodesUnaryRequest 判断是否存在已知的一元请求解码器。
+// decodesUnaryRequest reports whether a known unary request decoder exists.
 func decodesUnaryRequest(path string) bool {
 	if path == bidiAppendPath {
 		return true
@@ -275,13 +275,13 @@ func decodesUnaryRequest(path string) bool {
 	return message != nil
 }
 
-// decodesUnaryResponse 判断是否存在已知的一元响应解码器。
+// decodesUnaryResponse reports whether a known unary response decoder exists.
 func decodesUnaryResponse(path string) bool {
 	message, _ := unaryResponseMessage(path)
 	return message != nil
 }
 
-// newMessage 按完整 protobuf 类型名从注册表创建消息实例。
+// newMessage creates a message instance from the registry by full protobuf type name.
 func newMessage(messageType string) proto.Message {
 	switch messageType {
 	case "aiserver.v1.BidiRequestId":
@@ -301,7 +301,7 @@ func newMessage(messageType string) proto.Message {
 	}
 }
 
-// rpcMethodDescriptor 通过完整 RPC 路径查找注册表中的方法描述。
+// rpcMethodDescriptor finds the method descriptor in the registry by full RPC path.
 func rpcMethodDescriptor(path string) protoreflect.MethodDescriptor {
 	parts := strings.Split(strings.Trim(strings.TrimSpace(path), "/"), "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -318,7 +318,7 @@ func rpcMethodDescriptor(path string) protoreflect.MethodDescriptor {
 	return service.Methods().ByName(protoreflect.Name(parts[1]))
 }
 
-// protoMessageKind 从消息描述推导稳定的 JSON kind 名称。
+// protoMessageKind derives a stable JSON kind name from the message descriptor.
 func protoMessageKind(descriptor protoreflect.MessageDescriptor) string {
 	if descriptor == nil {
 		return ""
@@ -326,7 +326,7 @@ func protoMessageKind(descriptor protoreflect.MessageDescriptor) string {
 	return snakeCase(string(descriptor.Name()))
 }
 
-// snakeCase 将 protobuf 名称转换为前端稳定的下划线命名。
+// snakeCase converts a protobuf name into the frontend-stable snake_case form.
 func snakeCase(value string) string {
 	var result strings.Builder
 	for index, character := range value {
@@ -342,7 +342,7 @@ func snakeCase(value string) string {
 	return result.String()
 }
 
-// marshalProtoJSON 把 protobuf 消息编码为前端可读 JSON。
+// marshalProtoJSON encodes a protobuf message as frontend-readable JSON.
 func marshalProtoJSON(message proto.Message) string {
 	if message == nil {
 		return ""
@@ -358,7 +358,7 @@ func marshalProtoJSON(message proto.Message) string {
 	return string(payload)
 }
 
-// activeOneofName 返回 Agent 消息当前激活的 oneof 名称。
+// activeOneofName returns the currently active oneof name on an Agent message.
 func activeOneofName(message proto.Message) string {
 	if message == nil {
 		return ""
@@ -375,7 +375,7 @@ func activeOneofName(message proto.Message) string {
 	return string(reflected.Descriptor().Name())
 }
 
-// prettyJSON 尝试格式化 JSON，失败时返回原始文本。
+// prettyJSON formats JSON when possible and returns the raw text on failure.
 func prettyJSON(payload []byte) string {
 	var target any
 	if err := json.Unmarshal(payload, &target); err != nil {
@@ -388,7 +388,7 @@ func prettyJSON(payload []byte) string {
 	return string(formatted)
 }
 
-// clippedHex 限制原始载荷展示长度并标记省略部分。
+// clippedHex bounds the displayed raw payload length and marks elided bytes.
 func clippedHex(payload []byte, max int) string {
 	if len(payload) > max {
 		return hex.EncodeToString(payload[:max]) + "..."

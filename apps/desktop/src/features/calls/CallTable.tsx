@@ -13,7 +13,7 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
   const columns: DataTableColumn<LlmCall>[] = [
     {
       key: "status",
-      header: t("状态"),
+      header: "Status",
       render: (call) => (
         <span
           className={[styles.status, styles[call.status]]
@@ -27,50 +27,50 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
 
     {
       key: "display_name",
-      header: t("显示名称"),
+      header: "Display name",
       render: (call) => call.display_name,
       title: (call) => call.display_name,
     },
     {
       key: "created_at",
-      header: t("时间"),
+      header: "Time",
       render: (call) => new Date(call.created_at_ms).toLocaleString(),
     },
     {
       key: "model_id",
-      header: t("模型名称"),
+      header: "Model name",
       render: (call) => call.model_id,
       title: (call) => call.model_id,
     },
     {
       key: "reasoning_effort",
-      header: t("思考强度"),
+      header: "Reasoning effort",
       render: (call) => value(call.reasoning_effort),
     },
     {
       key: "fast",
       header: "Fast",
-      render: (call) => call.fast == null ? "-" : call.fast ? t("是") : t("否"),
+      render: (call) => call.fast == null ? "-" : call.fast ? "Yes" : "No",
     },
 
     {
       key: "call_kind",
-      header: t("调用类型"),
+      header: "Call type",
       render: (call) =>
-        call.call_kind === "cursor_official" ? t("Cursor 官方") : "LLM",
+        call.call_kind === "cursor_official" ? "Cursor official" : "LLM",
     },
     {
       key: "route",
-      header: t("路由"),
+      header: "Route",
       render: (call) =>
-        call.route === "cursor_official" ? t("Cursor 官方") : "BYOK",
+        call.route === "cursor_official" ? "Cursor official" : "BYOK",
     },
 
     // { key: "model_hash", header: "Model Hash", render: (call) => value(call.model_hash), title: (call) => call.model_hash ?? undefined },
-    // { key: "provider_type", header: t("供应商类型"), render: (call) => call.provider_type },
-    // { key: "provider_url", header: t("供应商地址"), render: (call) => call.provider_url, title: (call) => call.provider_url },
-    // { key: "request_type", header: t("最终请求类型"), render: (call) => call.request_type },
-    // { key: "request_url", header: t("最终请求地址"), render: (call) => call.request_url, title: (call) => call.request_url },
+    // { key: "provider_type", header: "Provider type", render: (call) => call.provider_type },
+    // { key: "provider_url", header: "Provider URL", render: (call) => call.provider_url, title: (call) => call.provider_url },
+    // { key: "request_type", header: "Final request type", render: (call) => call.request_type },
+    // { key: "request_url", header: "Final request URL", render: (call) => call.request_url, title: (call) => call.request_url },
     {
       key: "finish_reason",
       header: "Finish Reason",
@@ -79,7 +79,7 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
     { key: "http", header: "HTTP", render: (call) => value(call.http_status) },
     {
       key: "duration",
-      header: t("耗时"),
+      header: "Duration",
       render: (call) => milliseconds(call.duration_ms),
     },
     {
@@ -129,18 +129,18 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
     },
     {
       key: "message_count",
-      header: t("消息数"),
+      header: "Messages",
       render: (call) => call.message_count,
     },
     {
       key: "tool_count",
-      header: t("工具数"),
+      header: "Tools",
       render: (call) => call.tool_count,
     },
     {
       key: "detailed",
-      header: t("详细记录"),
-      render: (call) => (call.detailed ? t("是") : t("否")),
+      header: "Detailed records",
+      render: (call) => (call.detailed ? "Yes" : "No"),
     },
 
     {
@@ -180,13 +180,13 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
     },
     {
       key: "actions",
-      header: t("操作"),
+      header: "Actions",
       sticky: "right",
       render: (call) => (
-        <TooltipTrigger label={t("查看详情")}>
+        <TooltipTrigger label={"View details"}>
           <button
             className={controls.iconButton}
-            aria-label={t("查看详情")}
+            aria-label={"View details"}
             onClick={() => onDetails(call)}
           >
             <Icon icon={eyeIcon} size="1.1em" />

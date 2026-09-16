@@ -1,54 +1,54 @@
 <!-- Reproducible benchmark protocol for Semble's React and Vue evaluation. -->
-# Semble / CodeGraph React/Vue 对比基准
+# Semble / CodeGraph React/Vue comparison benchmark
 
-这个基准在相同的 React、Vue 提交上比较 Semble 和本机安装的 CodeGraph。每条查询都人工标注到具体实现行，只有返回代码范围覆盖该行才算命中。
+This benchmark compares Semble against a locally installed CodeGraph on identical React and Vue commits. Every query is manually annotated to specific implementation lines; a result only counts as a hit when the returned code range covers that line.
 
-为了兼顾不同检索方式，效果分为三条轨道：
+To cover different retrieval styles, effectiveness is split into three tracks:
 
-- `natural_language`：Semble `search` 对比 CodeGraph 官方推荐的 `codegraph_explore`；
-- `literal`：多词代码片段、错误文本或相邻标识符组合，两边均通过各自的产品级搜索入口检索；
-- `symbol`：Semble `search` 对比 CodeGraph `searchNodes`，输入相同精确符号名。
+- `natural_language`: Semble `search` versus CodeGraph's officially recommended `codegraph_explore`;
+- `literal`: multi-word code fragments, error text, or adjacent identifier combinations, retrieved through each system's product-level search entry;
+- `symbol`: Semble `search` versus CodeGraph `searchNodes`, given the same exact symbol name.
 
-三条轨道复用相同的人工标注实现位置。每次运行还会检查标注文件存在且行号没有越界，避免失效真值产生虚假分数。
+All three tracks reuse the same manually annotated implementation locations. Each run also verifies that the annotation files exist and that their line numbers are in range, so stale ground truth cannot produce false scores.
 
-## 指标
+## Metrics
 
-性能包含：
+Performance covers:
 
-- 冷启动到可查询、冷索引、索引单元吞吐；
-- 持久索引加载时间；
-- 缓存热查询 min、max、mean、标准差、P50、P95、P99；
-- Semble 显式刷新索引后执行符号查询的独立延迟；
-- 索引文件、代码块或图节点、图边、持久化索引体积。
+- cold start to queryable, cold indexing, and index-unit throughput;
+- persisted index load time;
+- cached hot-query min, max, mean, standard deviation, P50, P95, P99;
+- a separate latency for symbol queries after an explicit Semble index refresh;
+- indexed files, code chunks or graph nodes, graph edges, and persisted index size.
 
-效果包含：
+Effectiveness covers:
 
-- Recall@1、Recall@3、Recall@5、Recall@10；
-- MRR@10；
-- nDCG@10；
-- 每条查询的首个命中排名和 Top 10 结果明细。
+- Recall@1, Recall@3, Recall@5, Recall@10;
+- MRR@10;
+- nDCG@10;
+- the first-hit rank and Top 10 result details for every query.
 
-## 运行
+## Running
 
-需要本机 `PATH` 中存在 `codegraph`。从工作区根目录运行：
+`codegraph` must be on the local `PATH`. From the workspace root:
 
 ```sh
 cargo run --release -p semble-benchmark
 ```
 
-需要用于 CI 或本地回归检查时增加 `--check`。跑分报告仍会正常生成，但任一 Semble 轨道低于 [`quality-gates.json`](./quality-gates.json) 中的公开质量下限时，命令会返回失败。完整双系统报告还要求 Semble 的缓存加载，以及符号查询的 P50、P95，均不超过 CodeGraph 的 90%：
+Add `--check` for CI or local regression gating. The benchmark report is still generated, but the command fails if any Semble track falls below the public quality gates in [`quality-gates.json`](./quality-gates.json). The full two-system report additionally requires Semble's cached load, plus symbol-query P50 and P95, to stay within 90% of CodeGraph's:
 
 ```sh
 cargo run --release -p semble-benchmark -- --check
 ```
 
-只验证 Semble 查询效果和质量门槛、跳过耗时较长的 CodeGraph 重建时使用：
+To validate only Semble query effectiveness and quality gates, skipping the slower CodeGraph rebuild:
 
 ```sh
 cargo run --release -p semble-benchmark -- --semble-only --check
 ```
 
-工具默认自行拉取固定提交，并清空隔离的基准索引，模型缓存保留。CodeGraph 使用位于 `target` 下的独立 Git 工作副本，不会创建、覆盖或删除传入代码库中的 `.codegraph`。已有精确提交的工作区可以复用：
+By default the tool fetches the pinned commits itself and clears the isolated benchmark indexes; model caches are kept. CodeGraph uses a separate Git working copy under `target` and never creates, overwrites, or deletes `.codegraph` in the repositories passed in. Workspaces already at the exact commits can be reused:
 
 ```sh
 cargo run --release -p semble-benchmark -- \
@@ -57,8 +57,8 @@ cargo run --release -p semble-benchmark -- \
   --repetitions 5
 ```
 
-结果写入 `results/latest.json` 和 `results/latest.md`。JSON 用于后续回归比较，Markdown 用于人工审阅。运行时环境、提交、参数和逐查询结果都会写进报告。
+Results are written to `results/latest.json` and `results/latest.md`. The JSON feeds later regression comparisons; the Markdown is for human review. The runtime environment, commits, parameters, and per-query results are all included in the report.
 
-## 解读限制
+## Interpretation limits
 
-这是代码定位基准，不评价生成答案本身。`codegraph_explore` 的图扩展和源码读取计入实际工具耗时，因此这是产品路径对比，不是内部算法微基准。Semble 同时持久化增量构建快照与可直接反序列化的运行时索引；加载后在固定一秒刷新窗口内复用已检查的内存索引，窗口到期后的首次查询或显式 `refresh` 会并行扫描文件元数据，并且只重新处理变化文件。报告将缓存查询与刷新加符号查询分开记录。CodeGraph 的加载指标打开已准备图数据库。CodeGraph 的独立 callers、callees、impact 能力不在本次范围内。标注集规模较小，适合防止检索质量回退，不应被解释为覆盖所有 React/Vue 开发问题的总体准确率。每条查询先执行一次不计时预热，再记录五次；报告中的标准差用于识别抖动，但跨版本性能比较仍应在同一机器、同一电源状态下至少重复三轮。
+This is a code-location benchmark; it does not evaluate generated answers. `codegraph_explore`'s graph expansion and source reads count toward actual tool latency, so this compares product paths, not internal algorithm microbenchmarks. Semble persists both incremental build snapshots and a directly deserializable runtime index; after loading, queries reuse the checked in-memory index within a fixed one-second refresh window, and the first query after expiry — or an explicit `refresh` — scans file metadata in parallel and reprocesses only changed files. The report records cached queries separately from refresh-plus-symbol queries. CodeGraph's load metric opens a prepared graph database. CodeGraph's standalone callers, callees, and impact capabilities are outside this scope. The annotation set is small — suitable for guarding against retrieval-quality regressions, but it should not be read as overall accuracy across all React/Vue development questions. Each query runs one untimed warmup before five recorded repetitions; the reported standard deviation helps spot jitter, but cross-version performance comparisons should still repeat at least three rounds on the same machine and power state.

@@ -88,7 +88,7 @@ fn start_web_search(
     search: WebSearch,
     pending: PendingInteraction,
 ) -> Result<()> {
-    // Claude Code 习惯的 query 作为 search_term 的别名兼容。
+    // Accepts the Claude Code-style query as an alias for search_term.
     let query = ["search_term", "query"]
         .iter()
         .find_map(|name| {

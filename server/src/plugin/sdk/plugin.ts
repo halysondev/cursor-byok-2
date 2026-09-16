@@ -5,9 +5,10 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 /**
- * 可本地化文本:纯字符串,或 locale → 文本 的映射
- * (如 { "zh-CN": "账号", "en-US": "Accounts" })。
- * 宿主原样透传,由界面按当前语言解析;模型名等来自上游的数据保持纯字符串。
+ * Localizable text: a plain string, or a locale → text map
+ * (e.g. { "en-US": "Accounts" }).
+ * The host passes it through unchanged and the interface resolves it for the current
+ * language; upstream-derived data such as model names stays a plain string.
  */
 export type LocalizedText = string | { [locale: string]: string };
 
@@ -23,7 +24,7 @@ export type NetworkResponse = {
   body: string;
 };
 
-/** 流式响应体,按行随到随交付(用于 SSE)。 */
+/** A streaming response body delivered line by line as it arrives (for SSE). */
 export type NetworkEventStream = {
   status: number;
   headers: Record<string, string>;
@@ -31,8 +32,8 @@ export type NetworkEventStream = {
 };
 
 /**
- * 每次能力调用收到的宿主服务。网络请求仅限 plugin.json 声明的 HTTPS 主机;
- * 宿主取消本次调用时通过 `signal` 中止。
+ * Host services received by each capability call. Network requests are limited to the
+ * HTTPS hosts declared in plugin.json; when the host cancels the call it aborts via `signal`.
  */
 export type PluginContext = {
   network: {
@@ -43,8 +44,9 @@ export type PluginContext = {
 };
 
 /**
- * Provider 插件定义:一组能力实现的集合。插件不持有任何持久状态——
- * 资源与模型目录由宿主存储,每次调用所需的数据都通过参数传入。
+ * Provider plugin definition: a set of capability implementations. The plugin holds no
+ * persistent state — resources and model catalogs are stored by the host, and everything
+ * a call needs arrives through parameters.
  */
 export type ProviderPluginDefinition = {
   providers: ProviderSupport[];
@@ -53,7 +55,7 @@ export type ProviderPluginDefinition = {
 
 let registered: ProviderPluginDefinition | undefined;
 
-/** 注册 Provider 插件;每个插件入口只能调用一次。 */
+/** Registers a Provider plugin; each plugin entry may call it only once. */
 export function defineProviderPlugin(definition: ProviderPluginDefinition): ProviderPluginDefinition {
   if (registered) throw new Error("defineProviderPlugin can only be called once");
   registered = definition;
@@ -65,7 +67,7 @@ export function __getRegisteredPlugin(): ProviderPluginDefinition {
   return registered;
 }
 
-/** 可序列化的能力摘要,宿主收集它时不调用任何能力方法。 */
+/** A serializable capability summary; the host collects it without invoking any capability method. */
 export function __descriptor(definition: ProviderPluginDefinition) {
   return {
     providers: definition.providers.map((provider) => ({

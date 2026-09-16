@@ -12,7 +12,7 @@ pub fn tool_query(id: u32, call: &ToolCall) -> Result<pb::AgentServerMessage> {
             .map(str::to_string)
             .ok_or_else(|| Error::Protocol(format!("{} is missing {name}", call.name)))
     };
-    // Claude 系模型常按 Claude Code 习惯输出别名参数(如 query),逐个回退兼容。
+    // Claude-family models often emit alias parameters the way Claude Code does (e.g. query); each alias is accepted for compatibility.
     let string_aliased = |names: &[&str]| -> Result<String> {
         for name in names {
             if let Some(value) = call.arguments.get(name).and_then(Value::as_str) {
@@ -237,8 +237,9 @@ mod tests {
 
     #[test]
     fn web_search_accepts_query_as_search_term_alias() {
-        // Claude 系模型常按 Claude Code 习惯发送 query 而非 search_term,
-        // 交互查询编码必须接受别名,而不是报 `WebSearch is missing search_term`。
+        // Claude-family models often send query instead of search_term the way Claude Code
+        // does; interactive query encoding must accept the alias rather than failing with
+        // `WebSearch is missing search_term`.
         let call = ToolCall {
             index: 0,
             call_id: "call-1".into(),

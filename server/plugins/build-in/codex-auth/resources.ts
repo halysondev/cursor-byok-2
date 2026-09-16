@@ -39,7 +39,7 @@ export type AccountQuota = {
   updatedAtMs: number;
 };
 
-/** 单条 chatgpt-account 资源的 privateData 形状。 */
+/** Shape of a single chatgpt-account resource's privateData. */
 export type AccountData = {
   accessToken: string;
   refreshToken: string | null;
@@ -105,7 +105,7 @@ async function tokenFingerprint(token: string): Promise<string> {
   ).join("");
 }
 
-/** ChatGPT access token 的邮箱通常在 OpenAI 的 profile 声明里,而不是顶层 email。 */
+/** A ChatGPT access token's email usually lives in OpenAI's profile claim, not the top-level email. */
 function profileEmail(payload: Record<string, unknown> | null): string | null {
   const profile = object(payload?.["https://api.openai.com/profile"]);
   return text(profile?.email);
@@ -262,7 +262,7 @@ export function quotaState(quota: AccountQuota | null, nowMs = Date.now()): Reso
     : { status: "cooling", retryAtMs: coolingUntil, message: "ChatGPT quota is exhausted" };
 }
 
-/** 从上游错误文本中提取重置时间;拿不到时回退 5 小时。 */
+/** Extracts the reset time from upstream error text; falls back to 5 hours when absent. */
 function resetFromError(error: string, nowMs: number): number {
   const resetAt = error.match(/["']?reset_at["']?\s*[:=]\s*["']?(\d+(?:\.\d+)?)/i)?.[1];
   if (resetAt) {
@@ -278,7 +278,7 @@ function resetFromError(error: string, nowMs: number): number {
   return nowMs + FIVE_HOURS_MS;
 }
 
-/** 额度耗尽时的资源补丁:标记 5 小时窗口耗尽并按重置时间进入冷却。 */
+/** Resource patch for quota exhaustion: marks the 5-hour window exhausted and cools down until the reset time. */
 export function quotaExhaustedPatch(
   data: AccountData,
   error: string,
@@ -341,7 +341,7 @@ async function fetchResetCredits(
       fields: resetType
         ? [{
           id: "reset-type",
-          label: { "en-US": "Reset type", "zh-CN": "重置类型" },
+          label: "Reset type",
           value: resetType,
         }]
         : [],
@@ -367,10 +367,7 @@ function timestampMs(value: unknown): number | null {
 }
 
 function actionDescription(availableCount: number): ResourceActionResult["description"] {
-  return {
-    "en-US": `${availableCount} reset card${availableCount === 1 ? "" : "s"} available`,
-    "zh-CN": `可用重置卡 ${availableCount} 张`,
-  };
+  return `${availableCount} reset card${availableCount === 1 ? "" : "s"} available`;
 }
 
 async function listResetCards(
@@ -380,7 +377,7 @@ async function listResetCards(
 ): Promise<ResourceActionResult> {
   const result = await fetchResetCredits(accountData(resource), context);
   return {
-    title: { "en-US": "Codex reset cards", "zh-CN": "Codex 重置卡" },
+    title: "Codex reset cards",
     description: actionDescription(result.availableCount),
     cards: result.cards,
   };
@@ -418,7 +415,7 @@ async function consumeResetCard(
   };
   const refreshed = await fetchResetCredits(accountData(refreshedResource), context);
   return {
-    title: { "en-US": "Codex reset card used", "zh-CN": "Codex 重置卡已使用" },
+    title: "Codex reset card used",
     description: actionDescription(refreshed.availableCount),
     cards: refreshed.cards,
     patch,
@@ -427,22 +424,16 @@ async function consumeResetCard(
 
 export const listResetCardsAction: ResourceAction = {
   id: LIST_RESET_CARDS_ACTION_ID,
-  displayName: { "en-US": "View reset cards", "zh-CN": "查看重置卡" },
-  description: {
-    "en-US": "List available Codex reset cards.",
-    "zh-CN": "查看当前账号的 Codex 重置卡。",
-  },
+  displayName: "View reset cards",
+  description: "List available Codex reset cards.",
   target: "resource",
   run: listResetCards,
 };
 
 export const consumeResetCardAction: ResourceAction = {
   id: CONSUME_RESET_CARD_ACTION_ID,
-  displayName: { "en-US": "Use reset card", "zh-CN": "使用重置卡" },
-  description: {
-    "en-US": "Redeem one available Codex reset card.",
-    "zh-CN": "消耗一张可用的 Codex 重置卡。",
-  },
+  displayName: "Use reset card",
+  description: "Redeem one available Codex reset card.",
   target: "card",
   destructive: true,
   run: consumeResetCard,
@@ -455,7 +446,7 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   if (weekly && weekly.remainingPercent !== null) {
     metrics.push({
       id: "weekly",
-      label: { "en-US": "Weekly quota", "zh-CN": "周额度" },
+      label: "Weekly quota",
       unit: "percent",
       value: weekly.remainingPercent,
       ...(weekly.resetAtMs !== null ? { resetAtMs: weekly.resetAtMs } : {}),
@@ -465,7 +456,7 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   if (fiveHour && fiveHour.remainingPercent !== null) {
     metrics.push({
       id: "five-hour",
-      label: { "en-US": "5-hour window", "zh-CN": "5 小时窗口" },
+      label: "5-hour window",
       unit: "percent",
       value: fiveHour.remainingPercent,
       ...(fiveHour.resetAtMs !== null ? { resetAtMs: fiveHour.resetAtMs } : {}),
@@ -475,13 +466,13 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   if (resetCreditsAvailable !== null && resetCreditsAvailable !== undefined) {
     metrics.push({
       id: "reset-credits",
-      label: { "en-US": "Reset cards", "zh-CN": "重置卡" },
+      label: "Reset cards",
       unit: "count",
       value: resetCreditsAvailable,
     });
   }
   return {
-    // 旧记录可能存的是账号 ID;展示时优先从 token 现算邮箱。
+    // Old records may store the account ID; for display, prefer deriving the email from the token.
     displayName: jwtDisplayName(data.accessToken) ?? data.displayName,
     ...(data.quota?.planLabel ? { description: data.quota.planLabel } : {}),
     ...(metrics.length > 0 ? { metrics } : {}),
@@ -588,14 +579,8 @@ export function parseCredentialFiles(files: ResourceImportFile[]): {
 }
 
 export const credentialImport: ResourceImportSupport = {
-  displayName: {
-    "en-US": "Import Codex credentials",
-    "zh-CN": "导入 Codex 凭证",
-  },
-  description: {
-    "en-US": "Import one or more Codex JSON credential files.",
-    "zh-CN": "导入一个或多个 Codex JSON 凭证文件。",
-  },
+  displayName: "Import Codex credentials",
+  description: "Import one or more Codex JSON credential files.",
   accept: [".json"],
   multiple: true,
   parse: async (files: ResourceImportFile[]): Promise<ResourceImportResult> => {

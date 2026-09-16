@@ -134,7 +134,7 @@ function CollapsibleGroup({ label, icon, iconSrc, defaultOpen = true, onSettings
       </button>
       {onSettings && <button type="button" className={styles.groupSettings} onClick={onSettings}>
         <Icon icon={editIcon} size="1em" />
-        {t("分组设置")}
+        {"Group settings"}
       </button>}
       <button
         type="button"
@@ -167,10 +167,10 @@ function ModelListRow({ model, disabled, testing, result, onTest, onEdit, onDupl
     </div>
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
-      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
-      <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={onEdit} />
-      <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={onDuplicate} />
-      <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={onDelete} />
+      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? "Cancel test" : "Test"} onClick={onTest} />
+      <TruncatedButton size="small" disabled={disabled} label={"Edit"} onClick={onEdit} />
+      <TruncatedButton size="small" disabled={disabled} label={"Duplicate"} onClick={onDuplicate} />
+      <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={"Delete"} onClick={onDelete} />
     </div>
   </div>;
 }
@@ -190,8 +190,8 @@ function PluginModelRow({ model, disabled, testing, result, onTest, onSettings }
     </div>
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
-      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
-      <TruncatedButton size="small" disabled={disabled} label={t("设置")} onClick={onSettings} />
+      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? "Cancel test" : "Test"} onClick={onTest} />
+      <TruncatedButton size="small" disabled={disabled} label={"Settings"} onClick={onSettings} />
     </div>
   </div>;
 }
@@ -263,7 +263,7 @@ function ModelGrid({
       const result = testResults.get(model.model_hash);
       const testing = testingModelHashes.has(model.model_hash);
       return <Card className={styles.modelCard} data-model-hash={model.model_hash} key={model.model_hash}>
-        {sortableEnabled && <button type="button" className={styles.sortHandle} disabled={disabled} aria-label={t("拖动排序")} title={t("拖动排序")} onClick={(event) => event.stopPropagation()}>
+        {sortableEnabled && <button type="button" className={styles.sortHandle} disabled={disabled} aria-label={"Drag to reorder"} title={"Drag to reorder"} onClick={(event) => event.stopPropagation()}>
           <Icon icon={dragIcon} size="1.25em" />
         </button>}
         <div className={styles.modelCardContent}>
@@ -281,10 +281,10 @@ function ModelGrid({
             <CursorModelTestResult state={result} testing={testing} />
           </div>
           <div className={styles.modelCardActions}>
-            <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={() => onTest(model)} />
-            <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={() => onEdit(model)} />
-            <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={() => onDuplicate(model)} />
-            <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={() => onDelete(model)} />
+            <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? "Cancel test" : "Test"} onClick={() => onTest(model)} />
+            <TruncatedButton size="small" disabled={disabled} label={"Edit"} onClick={() => onEdit(model)} />
+            <TruncatedButton size="small" disabled={disabled} label={"Duplicate"} onClick={() => onDuplicate(model)} />
+            <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={"Delete"} onClick={() => onDelete(model)} />
           </div>
         </div>
       </Card>;

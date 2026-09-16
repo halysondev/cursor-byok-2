@@ -502,8 +502,9 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
     }
 }
 
-/// 徽章回退标签:base_url 的主机名。入库时已校验为带主机的 HTTP(S) URL,
-/// 解析失败仅是理论分支,此时原样返回 base_url。
+/// Badge fallback label: the host name of base_url. The URL is validated as an HTTP(S) URL
+/// with a host before it is stored, so a parse failure is only a theoretical branch — in
+/// that case base_url is returned as is.
 fn provider_host(base_url: &str) -> String {
     reqwest::Url::parse(base_url.trim())
         .ok()
@@ -586,7 +587,7 @@ fn model_variants(
     contexts: &[(String, String)],
     thinking: bool,
 ) -> Vec<ModelVariant> {
-    // 非思考模型没有 Effort 轴,变体网格只剩 Context × Fast。
+    // Non-thinking models have no Effort axis, so the variant grid reduces to Context × Fast.
     let efforts: &[Option<(&str, &str)>] = if thinking {
         &[
             Some(EFFORTS[0]),
@@ -694,7 +695,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     let tooltip = TooltipData {
         markdown_content: model.description.clone(),
     };
-    // Effort 与上下文档位由宿主统一提供,与内置模型一致;插件不再声明这两项。
+    // Effort and context tiers are provided uniformly by the host, consistent with built-in models; plugins no longer declare them.
     let contexts = context_options(None);
     let variants = model_variants(&model.id, &model.display_name, &tooltip, &contexts, true);
     let legacy_slugs = variants

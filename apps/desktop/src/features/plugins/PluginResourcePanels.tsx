@@ -12,7 +12,6 @@ import {
   type PluginResourceDescriptor,
   type PluginResourceView,
 } from "../../shared/api";
-import { useI18n } from "../../i18n/store";
 import { appStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
@@ -32,7 +31,7 @@ export function PluginAddPanel({ plugin, onConfigured }: { plugin: PluginDescrip
       resource={resource}
       onConfigured={onConfigured}
     />)}
-    {plugin.resources.length === 0 && <span className={styles.empty}>{t("该插件不需要添加资源")}</span>}
+    {plugin.resources.length === 0 && <span className={styles.empty}>{"This plugin does not need any resources."}</span>}
   </div>;
 }
 
@@ -58,7 +57,6 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
   method: PluginAddMethod;
   onConfigured: () => void;
 }) {
-  const { locale } = useI18n();
   const [status, setStatus] = useState<"idle" | "starting" | "polling" | "success" | "error">("idle");
   const [begun, setBegun] = useState<PluginOAuthBegin | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +87,7 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
           await appStore.refreshPlugins();
           if (result.modelSyncError) {
             setStatus("error");
-            setError(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }));
+            setError(`The account was saved, but model sync failed: ${result.modelSyncError}`);
             return;
           }
           setStatus("success");
@@ -97,7 +95,7 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
           return;
         }
         setStatus("error");
-        setError(result.message || t("授权被拒绝或已失败。"));
+        setError(result.message || "Authorization was denied or failed.");
       } catch (cause) {
         if (stopped.current) return;
         setError(errorText(cause));
@@ -125,22 +123,22 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
 
   const userCode = begun?.userCode;
   return <Card className={styles.methodCard}>
-    <strong>{pluginText(method.displayName, locale)}</strong>
-    {method.description && <span>{pluginText(method.description, locale)}</span>}
+    <strong>{pluginText(method.displayName)}</strong>
+    {method.description && <span>{pluginText(method.description)}</span>}
     {userCode && status === "polling" && <div className={styles.deviceCode}>
-      <small>{t("设备验证码")}</small>
+      <small>{"Device code"}</small>
       <button type="button" onClick={() => void copyCode(userCode)}>{userCode}</button>
       <button type="button" className={styles.copy} onClick={() => void copyCode(userCode)}>
-        {copied ? t("已复制") : t("复制")}
+        {copied ? "Copied" : "Duplicate"}
       </button>
     </div>}
     <div className={styles.actions}>
       <Button variant="primary" disabled={status === "starting" || status === "polling"} onClick={() => void start()}>
-        {status === "starting" ? t("正在申请授权码…") : status === "polling" ? t("等待网页端确认授权中…") : t("开始登录")}
+        {status === "starting" ? "Requesting an authorization code…" : status === "polling" ? "Waiting for browser authorization…" : "Start sign-in"}
       </Button>
-      {begun && status === "polling" && <Button onClick={() => void api.openExternalUrl(begun.verificationUrlComplete || begun.verificationUrl)}>{t("打开授权网页")}</Button>}
+      {begun && status === "polling" && <Button onClick={() => void api.openExternalUrl(begun.verificationUrlComplete || begun.verificationUrl)}>{"Open authorization page"}</Button>}
     </div>
-    {status === "success" && <span className={styles.success}>{t("账号已保存，模型目录已同步。")}</span>}
+    {status === "success" && <span className={styles.success}>{"Account saved and the model catalog is synced."}</span>}
     {error && <span className={styles.error} role="alert">{error}</span>}
   </Card>;
 }
@@ -256,22 +254,21 @@ function ProviderRow({ provider, busy, syncing, onManageModels, onSync }: {
   onManageModels: () => void;
   onSync: () => void;
 }) {
-  const { locale } = useI18n();
   return <Card className={styles.providerRow}>
     <div>
-      <strong>{pluginText(provider.displayName, locale)}</strong>
+      <strong>{pluginText(provider.displayName)}</strong>
       <span>
         {provider.providerType}
         {" · "}
-        {provider.models.length > 0 ? t("{count} 个模型", { count: provider.models.length }) : t("尚未同步模型")}
+        {provider.models.length > 0 ? `${provider.models.length} models` : "Models not synced yet"}
         {" · "}
-        {provider.configured ? t("可调用") : t("未就绪")}
+        {provider.configured ? "Callable" : "Not ready"}
       </span>
     </div>
     {provider.hasModels && <div className={styles.actions}>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={onManageModels}>{t("模型管理")}</Button>
+      <Button size="small" disabled={busy || provider.models.length === 0} onClick={onManageModels}>{"Model management"}</Button>
       <Button size="small" disabled={busy} onClick={onSync}>
-        {syncing ? t("正在同步…") : t("同步模型")}
+        {syncing ? "Syncing…" : "Sync models"}
       </Button>
     </div>}
   </Card>;
@@ -283,7 +280,6 @@ function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
   onClose: () => void;
   onSubmit: (enabledByModel: Record<string, boolean>) => void;
 }) {
-  const { locale } = useI18n();
   const [enabledByModel, setEnabledByModel] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -297,19 +293,19 @@ function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
   return <Modal
     fullHeight
     open
-    title={t("{name} 模型管理", { name: pluginText(provider.displayName, locale) })}
+    title={`${pluginText(provider.displayName)} model management`}
     busy={busy}
     onClose={onClose}
     onSubmit={() => onSubmit(enabledByModel)}
-    submitLabel={t("确定")}
+    submitLabel={"Confirm"}
   >
     <div className={styles.modelToolbar}>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(true)}>{t("全选")}</Button>
-      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(false)}>{t("全不选")}</Button>
+      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(true)}>{"Select all"}</Button>
+      <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(false)}>{"Deselect all"}</Button>
     </div>
     <div className={styles.modelTableWrap}>
       <table className={styles.modelTable}>
-        <thead><tr><th scope="col">{t("模型名称")}</th><th scope="col">{t("启用")}</th></tr></thead>
+        <thead><tr><th scope="col">{"Model name"}</th><th scope="col">{"Enabled"}</th></tr></thead>
         <tbody>
           {provider.models.map((model) => <tr key={model.id}>
             <td><div className={styles.modelName}>
@@ -319,13 +315,13 @@ function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
             <td><Switch
               checked={enabledByModel[model.id] ?? model.enabled}
               disabled={busy}
-              label={t("启用 {model}", { model: model.displayName })}
+              label={`Enable ${model.displayName}`}
               onChange={(enabled) => setEnabledByModel((current) => ({ ...current, [model.id]: enabled }))}
             /></td>
           </tr>)}
         </tbody>
       </table>
-      {provider.models.length === 0 && <span className={styles.empty}>{t("尚未同步模型")}</span>}
+      {provider.models.length === 0 && <span className={styles.empty}>{"Models not synced yet"}</span>}
     </div>
   </Modal>;
 }
@@ -337,7 +333,6 @@ function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
   onRefresh: (item: PluginResourceView) => void;
   onDelete: (item: PluginResourceView) => void;
 }) {
-  const { locale } = useI18n();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const filtered = useMemo(
@@ -349,10 +344,10 @@ function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
 
   useEffect(() => setPage(1), [query]);
 
-  return <FormField label={pluginText(resource.displayName, locale)}>
+  return <FormField label={pluginText(resource.displayName)}>
     <div className={styles.resourceSection}>
       {resource.resources.length > PAGE_SIZE && <div className={styles.toolbar}>
-        <TextInput aria-label={t("搜索资源")} placeholder={t("搜索资源")} value={query} onChange={(event) => setQuery(event.target.value)} />
+        <TextInput aria-label={"Search resources"} placeholder={"Search resources"} value={query} onChange={(event) => setQuery(event.target.value)} />
       </div>}
       <div className={styles.resourceList}>
         {visible.map((item) => <ResourceRow
@@ -365,12 +360,12 @@ function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
           onRefresh={() => onRefresh(item)}
           onDelete={() => onDelete(item)}
         />)}
-        {visible.length === 0 && <span className={styles.empty}>{t("还没有资源，请先添加。")}</span>}
+        {visible.length === 0 && <span className={styles.empty}>{"No resources yet. Add one first."}</span>}
       </div>
       {pageCount > 1 && <div className={styles.pagination}>
-        <Button size="small" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>{t("上一页")}</Button>
-        <span>{t("第 {page} / {total} 页", { page: Math.min(page, pageCount), total: pageCount })}</span>
-        <Button size="small" disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>{t("下一页")}</Button>
+        <Button size="small" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>{"Previous page"}</Button>
+        <span>{`Page ${Math.min(page, pageCount)} / ${pageCount}`}</span>
+        <Button size="small" disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>{"Next page"}</Button>
       </div>}
     </div>
   </FormField>;
@@ -385,22 +380,21 @@ function ResourceRow({ item, actions, canRefresh, disabled, onAction, onRefresh,
   onRefresh: () => void;
   onDelete: () => void;
 }) {
-  const { locale } = useI18n();
   return <Card className={styles.resourceRow}>
     <div>
       <strong>{item.displayName}</strong>
-      {item.description && <span>{pluginText(item.description, locale)}</span>}
+      {item.description && <span>{pluginText(item.description)}</span>}
       {item.metrics.map((metric) => <span key={metric.id}>
         {metric.unit === "percent"
-          ? t("{label} 剩余 {percent}%", { label: pluginText(metric.label, locale), percent: Math.round(metric.value) })
-          : `${pluginText(metric.label, locale)}: ${metric.value}`}
+          ? `${pluginText(metric.label)}: ${Math.round(metric.value)}% left`
+          : `${pluginText(metric.label)}: ${metric.value}`}
       </span>)}
     </div>
     <div className={styles.actions}>
       <StateBadge state={item.state} />
-      {actions.map((action) => <Button key={action.id} size="small" disabled={disabled} onClick={() => onAction(action)}>{pluginText(action.displayName, locale)}</Button>)}
-      {canRefresh && <Button size="small" disabled={disabled} onClick={onRefresh}>{t("刷新")}</Button>}
-      <Button size="small" disabled={disabled} onClick={onDelete}>{t("删除")}</Button>
+      {actions.map((action) => <Button key={action.id} size="small" disabled={disabled} onClick={() => onAction(action)}>{pluginText(action.displayName)}</Button>)}
+      {canRefresh && <Button size="small" disabled={disabled} onClick={onRefresh}>{"Refresh"}</Button>}
+      <Button size="small" disabled={disabled} onClick={onDelete}>{"Delete"}</Button>
     </div>
   </Card>;
 }
@@ -414,26 +408,25 @@ function ResourceActionModal({ action, cardAction, result, busy, error, onClose,
   onClose: () => void;
   onCardAction: (action: PluginResourceAction, card: PluginResourceActionCard) => void;
 }) {
-  const { locale } = useI18n();
   const [pendingCard, setPendingCard] = useState<PluginResourceActionCard | null>(null);
-  const title = result ? pluginText(result.title, locale) : action ? pluginText(action.displayName, locale) : t("资源详情");
+  const title = result ? pluginText(result.title) : action ? pluginText(action.displayName) : "Resource details";
   const cardActions = cardAction ? [cardAction] : [];
 
   return <>
-    <Modal compact open title={title} busy={busy} onClose={onClose} submitLabel={t("关闭")} onSubmit={onClose}>
+    <Modal compact open title={title} busy={busy} onClose={onClose} submitLabel={"Close"} onSubmit={onClose}>
       <div className={styles.actionBody}>
-        {result?.description && <span className={styles.actionDescription}>{pluginText(result.description, locale)}</span>}
-        {busy && <span className={styles.empty}>{t("正在加载…")}</span>}
+        {result?.description && <span className={styles.actionDescription}>{pluginText(result.description)}</span>}
+        {busy && <span className={styles.empty}>{"Loading…"}</span>}
         {error && <span className={styles.error} role="alert">{error}</span>}
-        {!busy && !error && result && result.cards.length === 0 && <span className={styles.empty}>{t("没有可用的重置卡。")}</span>}
+        {!busy && !error && result && result.cards.length === 0 && <span className={styles.empty}>{"No reset cards available."}</span>}
         {!busy && !error && result && <div className={styles.actionCardList}>
         {result.cards.map((card) => <Card key={card.id} className={styles.actionCard}>
           <div className={styles.actionCardMain}>
-            <strong>{pluginText(card.title, locale)}</strong>
-            {card.status && <span>{formatActionStatus(card.status, locale)}</span>}
-            {card.grantedAtMs !== null && card.grantedAtMs !== undefined && <span>{t("发放时间：{time}", { time: formatActionDate(card.grantedAtMs, locale) })}</span>}
-            {card.expiresAtMs !== null && card.expiresAtMs !== undefined && <span>{t("到期时间：{time}", { time: formatActionDate(card.expiresAtMs, locale) })}</span>}
-            {card.fields.map((field) => <span key={field.id}>{pluginText(field.label, locale)}: {field.value}</span>)}
+            <strong>{pluginText(card.title)}</strong>
+            {card.status && <span>{formatActionStatus(card.status)}</span>}
+            {card.grantedAtMs !== null && card.grantedAtMs !== undefined && <span>{`Granted: ${formatActionDate(card.grantedAtMs)}`}</span>}
+            {card.expiresAtMs !== null && card.expiresAtMs !== undefined && <span>{`Expires: ${formatActionDate(card.expiresAtMs)}`}</span>}
+            {card.fields.map((field) => <span key={field.id}>{pluginText(field.label)}: {field.value}</span>)}
           </div>
           {cardActions.length > 0 && <div className={styles.actions}>
             {cardActions.map((cardActionItem) => <Button
@@ -441,7 +434,7 @@ function ResourceActionModal({ action, cardAction, result, busy, error, onClose,
               size="small"
               disabled={busy || card.status !== "available"}
               onClick={() => cardActionItem.destructive ? setPendingCard(card) : onCardAction(cardActionItem, card)}
-            >{pluginText(cardActionItem.displayName, locale)}</Button>)}
+            >{pluginText(cardActionItem.displayName)}</Button>)}
           </div>}
         </Card>)}
       </div>}
@@ -449,9 +442,9 @@ function ResourceActionModal({ action, cardAction, result, busy, error, onClose,
     </Modal>
     {pendingCard && cardAction && <ConfirmDialog
       open
-      title={t("使用重置卡")}
+      title={"Use reset card"}
       busy={busy}
-      confirmLabel={t("确认使用")}
+      confirmLabel={"Confirm use"}
       onCancel={() => setPendingCard(null)}
       onConfirm={() => {
         const card = pendingCard;
@@ -459,35 +452,35 @@ function ResourceActionModal({ action, cardAction, result, busy, error, onClose,
         onCardAction(cardAction, card);
       }}
     >
-      <p>{t("使用后会立即消耗这张重置卡，且无法恢复。确定继续吗？")}</p>
-      <strong>{pluginText(pendingCard.title, locale)}</strong>
+      <p>{"Using this card consumes it immediately and cannot be undone. Continue?"}</p>
+      <strong>{pluginText(pendingCard.title)}</strong>
     </ConfirmDialog>}
   </>;
 }
 
-function formatActionStatus(status: PluginResourceActionCard["status"], locale: string) {
-  const value = typeof status === "string" ? status : pluginText(status, locale);
+function formatActionStatus(status: PluginResourceActionCard["status"]) {
+  const value = typeof status === "string" ? status : pluginText(status);
   switch (value.toLowerCase()) {
-    case "available": return t("可用");
+    case "available": return "Ready";
     case "redeemed":
-    case "used": return t("已使用");
-    case "expired": return t("已过期");
+    case "used": return "Used";
+    case "expired": return "Expired";
     default: return value;
   }
 }
 
-function formatActionDate(value: number, locale: string) {
-  return new Date(value).toLocaleString(locale);
+function formatActionDate(value: number) {
+  return new Date(value).toLocaleString("en-US");
 }
 
 function StateBadge({ state }: { state: PluginResourceView["state"] }) {
   if (state.status === "cooling") {
-    return <span className={styles.cooling} title={state.message ?? undefined}>{t("冷却中")}</span>;
+    return <span className={styles.cooling} title={state.message ?? undefined}>{"Cooling down"}</span>;
   }
   if (state.status === "invalid") {
-    return <span className={styles.invalid} title={state.message ?? undefined}>{t("已失效")}</span>;
+    return <span className={styles.invalid} title={state.message ?? undefined}>{"Invalid"}</span>;
   }
-  return <span className={styles.ready}>{t("可用")}</span>;
+  return <span className={styles.ready}>{"Ready"}</span>;
 }
 
 function errorText(cause: unknown) {

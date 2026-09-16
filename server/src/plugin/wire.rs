@@ -10,7 +10,7 @@ use crate::{
     Error, Result,
 };
 
-/// 把一次核心模型调用投影成 SDK 的 LlmRequest。
+/// Projects one core model invocation into the SDK's LlmRequest.
 pub fn llm_request(invocation: &ModelInvocation) -> Result<serde_json::Value> {
     let request = &invocation.request;
     let messages = request
@@ -46,7 +46,7 @@ fn wire_message(message: &ProjectedMessage) -> Result<serde_json::Value> {
                 "role": if message.role == Role::System { "system" } else { "user" },
                 "content": wire_parts(parts),
             })),
-            // 纯文本 assistant 历史消息投影成无工具调用的 assistant。
+            // A plain-text assistant history message projects to an assistant message with no tool calls.
             Role::Assistant => Ok(serde_json::json!({
                 "role": "assistant",
                 "text": joined_text(parts),
@@ -113,7 +113,7 @@ fn joined_text(parts: &[ContentPart]) -> String {
         .collect()
 }
 
-/// 把插件发出的标准化事件解析为核心 ModelEvent。
+/// Parses the normalized events emitted by a plugin into core ModelEvents.
 pub fn model_event(value: &serde_json::Value) -> Result<ModelEvent> {
     let kind = value
         .get("type")

@@ -1,4 +1,4 @@
-/* styles_controls.css 定义调试器筛选栏、请求列表和基础交互控件。 */
+/* styles_controls.css defines the debugger filter bar, request list, and basic interactive controls. */
 .workspace {
   display: grid;
   grid-template-rows: minmax(180px, 52%) 5px minmax(220px, 48%);

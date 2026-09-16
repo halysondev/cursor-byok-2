@@ -230,7 +230,7 @@
   justify-content: flex-end;
   gap: 8px;
 
-  // 空间不足时按钮收缩显示省略号,而不是换行。
+  // When space runs out the button shrinks with an ellipsis instead of wrapping.
   > button {
     min-width: 0;
     flex: 0 1 auto;

@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from "react";
 import { Modal } from "./Modal";
 
-export function ConfirmDialog({ id, open, title, children, busy, wide, cancelLabel = t("取消"), confirmLabel = t("确认"), onCancel, onConfirm }: {
+export function ConfirmDialog({ id, open, title, children, busy, wide, cancelLabel = "Cancel", confirmLabel = "Confirm", onCancel, onConfirm }: {
   id?: string;
   open: boolean;
   title: string;

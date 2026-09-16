@@ -1,17 +1,16 @@
-// app_events.js 绑定调试器筛选、详情、暂停和布局交互事件。
-import { t } from "./i18n.js";
+// app_events.js binds the debugger's filter, detail, pause, and layout interaction events.
 import { currentCopyText } from "./view_helpers.js";
 
-// renderPauseState 更新暂停按钮的文本和可访问性属性。
+// renderPauseState updates the pause button's text and accessibility attributes.
 export function renderPauseState(state, elements) {
   elements.pauseButton.textContent = state.paused ? "▶" : "Ⅱ";
-  const actionKey = state.paused ? "actions.resume" : "actions.pause";
-  elements.pauseButton.title = t(actionKey);
-  elements.pauseButton.setAttribute("aria-label", t(actionKey));
+  const label = state.paused ? "Resume UI updates" : "Pause UI updates";
+  elements.pauseButton.title = label;
+  elements.pauseButton.setAttribute("aria-label", label);
 }
 
-// bindEvents 绑定调试器页面的筛选、详情、暂停和布局交互。
-export function bindEvents({ state, elements, fetchJSON, refreshList, refreshDetail, renderList, renderDetail, renderBidiMessageFilter, setConnectionState, applyLocale }) {
+// bindEvents binds the debugger page's filter, detail, pause, and layout interactions.
+export function bindEvents({ state, elements, fetchJSON, refreshList, refreshDetail, renderList, renderDetail, renderBidiMessageFilter, setConnectionState }) {
 elements.requestList.addEventListener("click", async (event) => {
   const row = event.target.closest("tr[data-id]");
   if (!row) return;
@@ -96,9 +95,9 @@ document.querySelectorAll("[data-copy-side]").forEach((button) => {
     const text = currentCopyText(button.dataset.copySide, state);
     if (!text) return;
     await navigator.clipboard.writeText(text);
-    button.textContent = t("actions.copied");
+    button.textContent = "Copied";
     window.setTimeout(() => {
-      button.textContent = t("actions.copy");
+      button.textContent = "Copy";
     }, 900);
   });
 });
@@ -107,16 +106,11 @@ elements.pauseButton.addEventListener("click", async () => {
   state.paused = !state.paused;
   elements.pauseButton.classList.toggle("active", state.paused);
   renderPauseState(state, elements);
-  setConnectionState(!state.paused, state.paused ? "connection.paused" : "connection.live");
+  setConnectionState(!state.paused, state.paused ? "UI updates paused" : "Live connection");
   if (!state.paused && state.pendingRefresh) {
     state.pendingRefresh = false;
     await refreshList();
   }
-});
-
-elements.localeSelect.addEventListener("change", (event) => {
-  setLocale(event.target.value);
-  applyLocale();
 });
 
 elements.showOptionsCheckbox.addEventListener("change", (event) => {

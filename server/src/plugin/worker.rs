@@ -28,7 +28,7 @@ const INVOCATION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const MAX_NETWORK_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_STREAM_BYTES: u64 = 256 * 1024 * 1024;
 
-/// 一次流式调用的输出:零或多个事件,然后恰好一个最终结果。
+/// Output of one streaming call: zero or more events followed by exactly one final result.
 #[derive(Debug)]
 pub enum WorkerStreamItem {
     Event(serde_json::Value),
@@ -121,7 +121,7 @@ impl PluginWorker {
         }
     }
 
-    /// 一元调用:忽略事件,等待最终结果,受统一超时约束。
+    /// Unary call: events are ignored while awaiting the final result, under the shared timeout.
     pub async fn invoke(
         &self,
         method: &str,
@@ -152,8 +152,8 @@ impl PluginWorker {
         }
     }
 
-    /// 流式调用:事件按序转发,最终以恰好一个 Result 收尾。
-    /// 取消通过传入的令牌传播到 Worker 与其挂起的宿主网络请求。
+    /// Streaming call: events are forwarded in order and the call ends with exactly one Result.
+    /// Cancellation propagates through the given token to the Worker and its pending host network requests.
     pub async fn invoke_streaming(
         &self,
         method: &str,
@@ -195,7 +195,7 @@ impl PluginWorker {
             return Err(error);
         }
 
-        // 取消监视:通知 Worker,同时中止该请求挂起的宿主网络调用。
+        // Cancellation watch: notify the Worker and abort this request's pending host network calls.
         let inner = self.inner.clone();
         let request_id = id.clone();
         tokio::spawn(async move {
@@ -568,7 +568,7 @@ impl HostContext {
         )
     }
 
-    /// 打开流式响应:立即返回状态与响应头,响应体按行经 stream.read 拉取。
+    /// Opens a streaming response: status and headers return immediately; the body is pulled line by line via stream.read.
     async fn stream_open(
         &self,
         request_id: &str,
@@ -679,7 +679,7 @@ impl HostContext {
                 return Ok(serde_json::json!({ "lines": [], "done": true }));
             }
         }
-        // 把已就绪的行一并带走,减少往返。
+        // Drain lines that are already ready in the same batch to reduce round trips.
         while lines.len() < 256 {
             match receiver.try_recv() {
                 Ok(Ok(line)) => lines.push(line),

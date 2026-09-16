@@ -67,7 +67,7 @@ impl TransportRegistry {
         Self::build(store, provider, compiler, web_cache, None, None)
     }
 
-    /// 附带本地 rules 目录的构造;编译请求上下文时会合并该目录下的 md 规则。
+    /// Constructor that takes a local rules directory; the md rules inside it are merged when compiling the request context.
     pub fn with_local_rules(
         store: Store,
         provider: Arc<dyn Provider>,

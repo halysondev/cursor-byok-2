@@ -1,4 +1,4 @@
-/* styles.css 定义协议调试器的暗色布局、组件和响应式样式。 */
+/* styles_base.css defines the protocol debugger's dark layout, components, and responsive styles. */
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -144,21 +144,6 @@ a:focus-visible {
   gap: 7px;
 }
 
-.locale-picker {
-  display: flex;
-}
-
-.locale-picker select {
-  width: 58px;
-  height: 29px;
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  padding: 0 6px;
-  background: var(--surface-2);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 12px;
-}
 
 .visually-hidden {
   position: absolute;

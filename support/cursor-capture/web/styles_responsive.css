@@ -1,4 +1,4 @@
-/* styles_responsive.css 定义调试器在窄屏下的响应式布局。 */
+/* styles_responsive.css defines the debugger's responsive layout on narrow screens. */
 @media (max-width: 920px) {
   .app-shell {
     grid-template-rows: 48px auto minmax(0, 1fr) 26px;

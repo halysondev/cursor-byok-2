@@ -55,7 +55,7 @@ export function CacheHitRateChart({ rate, animationKey = 0 }: { rate: number; an
     }],
   }), [displayedPercentage]);
 
-  return <div className={styles.root} role="img" aria-label={t("缓存命中率 {rate}", { rate: label })}>
+  return <div className={styles.root} role="img" aria-label={`Cache hit rate ${label}`}>
     <EChart className={styles.chart} option={option} />
     <div className={styles.label}>{label}</div>
   </div>;

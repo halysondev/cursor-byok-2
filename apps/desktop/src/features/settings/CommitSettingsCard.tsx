@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, pluginText, type CommitSettingsView } from "../../shared/api";
-import { commitPromptLocale } from "../../i18n/runtime";
-import { useI18n } from "../../i18n/store";
 import { useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { Modal } from "../../shared/ui/Modal";
@@ -19,7 +17,6 @@ function errorText(cause: unknown) {
 
 export function CommitSettingsCard() {
   const { models, plugins } = useAppStore();
-  const { locale } = useI18n();
   const message = useMessage();
   const [view, setView] = useState<CommitSettingsView | null>(null);
   const [modelDraft, setModelDraft] = useState("");
@@ -33,15 +30,7 @@ export function CommitSettingsCard() {
     let active = true;
     void (async () => {
       try {
-        let loaded = await api.commitSettings(locale);
-        const promptLocale = commitPromptLocale(locale);
-        if (!loaded.prompt.trim() && loaded.prompt_locale !== promptLocale) {
-          loaded = await api.setCommitSettings({
-            model_id: loaded.model_id,
-            prompt: "",
-            prompt_locale: promptLocale,
-          });
-        }
+        const loaded = await api.commitSettings();
         if (active) {
           setView(loaded);
           setModelDraft(loaded.model_id);
@@ -53,17 +42,17 @@ export function CommitSettingsCard() {
     return () => {
       active = false;
     };
-  }, [locale, message]);
+  }, [message]);
 
   const modelOptions = useMemo(() => {
-    const options: ModelSelectOption[] = [{ value: "", label: t("直连"), group: "Cursor" }];
+    const options: ModelSelectOption[] = [{ value: "", label: "Direct", group: "Cursor" }];
     const seen = new Set<string>();
     for (const model of models) {
       seen.add(model.model_hash);
       options.push({
         value: model.model_hash,
         label: model.display_name && model.display_name !== model.model_id
-          ? `${model.display_name}（${model.model_id}）`
+          ? `${model.display_name}(${model.model_id})`
           : model.display_name || model.model_id,
         group: modelProviderName(model),
         icon: model.type === "anthropic" ? claudeIcon : openAiIcon,
@@ -72,7 +61,7 @@ export function CommitSettingsCard() {
     for (const plugin of plugins) {
       for (const provider of plugin.providers) {
         if (!provider.configured) continue;
-        const group = pluginText(provider.displayName, locale) || plugin.name;
+        const group = pluginText(provider.displayName) || plugin.name;
         for (const model of provider.models.filter((model) => model.enabled)) {
           seen.add(model.id);
           options.push({
@@ -89,7 +78,7 @@ export function CommitSettingsCard() {
       options.push({ value: view.model_id, label: view.model_id, group: "Cursor" });
     }
     return options;
-  }, [locale, models, plugins, view]);
+  }, [models, plugins, view]);
 
   const persist = useCallback(
     async (modelId: string, prompt: string) => {
@@ -99,10 +88,9 @@ export function CommitSettingsCard() {
       return api.setCommitSettings({
         model_id: modelId,
         prompt: normalizedPrompt,
-        prompt_locale: commitPromptLocale(locale),
       });
     },
-    [view, locale],
+    [view],
   );
 
   const editModel = useCallback(() => {
@@ -146,7 +134,7 @@ export function CommitSettingsCard() {
       const saved = await persist(view.model_id, promptDraft);
       if (saved) setView(saved);
       setPromptOpen(false);
-      message(t("提示词设置已保存"));
+      message("Prompt settings saved");
     } catch (cause) {
       message(errorText(cause));
     } finally {
@@ -161,32 +149,32 @@ export function CommitSettingsCard() {
 
   const selectedModelLabel = modelOptions.find((option) => option.value === view?.model_id)?.label
     ?? view?.model_id
-    ?? t("加载中…");
+    ?? "Loading…";
   const action = editing ? (
     <div className={styles.actionGroup}>
-      <Button size="small" disabled={savingModel} onClick={cancelModelEdit}>{t("取消")}</Button>
+      <Button size="small" disabled={savingModel} onClick={cancelModelEdit}>{"Cancel"}</Button>
       <Button variant="primary" size="small" disabled={savingModel} onClick={() => void saveModel()}>
-        {savingModel ? t("保存中…") : t("保存")}
+        {savingModel ? "Saving…" : "Save"}
       </Button>
     </div>
   ) : (
     <div className={styles.actionGroup}>
       <button type="button" className={styles.textButton} disabled={!view} onClick={openPrompt}>
-        {t("提示词设置")}
+        {"Prompt settings"}
       </button>
       <button type="button" className={styles.textButton} disabled={!view} onClick={editModel}>
-        {t("编辑")}
+        {"Edit"}
       </button>
     </div>
   );
 
   return (
     <>
-      <TitledCard title={t("Commit 提交代码模型设置")} action={action}>
+      <TitledCard title={"Commit Message Model Settings"} action={action}>
         <div className={styles.content}>
           <div className={styles.row}>
             <div className={styles.details}>
-              <strong>{t("生成模型")}</strong>
+              <strong>{"Generation model"}</strong>
             </div>
             {editing ? <div className={styles.select}>
               <ModelSelect
@@ -194,7 +182,7 @@ export function CommitSettingsCard() {
                 value={modelDraft}
                 options={modelOptions}
                 disabled={savingModel}
-                label={t("生成模型")}
+                label={"Generation model"}
                 onChange={setModelDraft}
               />
             </div> : <span className={styles.value}>{selectedModelLabel}</span>}
@@ -204,17 +192,17 @@ export function CommitSettingsCard() {
 
       <Modal
         open={promptOpen}
-        title={t("提示词设置")}
+        title={"Prompt settings"}
         wide
         fullHeight
         busy={savingPrompt}
         onClose={() => setPromptOpen(false)}
         onSubmit={() => void savePrompt()}
-        submitLabel={t("保存")}
-        closeLabel={t("取消")}
+        submitLabel={"Save"}
+        closeLabel={"Cancel"}
         secondaryAction={
           <button type="button" className={controls.secondary} onClick={resetPrompt}>
-            {t("恢复默认")}
+            {"Restore default"}
           </button>
         }
       >
@@ -222,7 +210,7 @@ export function CommitSettingsCard() {
           className={styles.promptEditor}
           value={promptDraft}
           spellCheck={false}
-          aria-label={t("提交信息提示词")}
+          aria-label={"Commit message prompt"}
           onChange={(event) => setPromptDraft(event.target.value)}
         />
       </Modal>

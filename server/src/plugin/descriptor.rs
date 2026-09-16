@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::state::{ResourceRecord, ResourceState, StoredModel};
 
-/// 由 collect.ts 输出的能力摘要;不含任何可执行内容。
+/// Capability summary emitted by collect.ts; contains nothing executable.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PluginModuleDefinition {
@@ -12,7 +12,7 @@ pub struct PluginModuleDefinition {
     pub resources: Vec<ResourceDefinition>,
 }
 
-/// 插件提供的显示文本:纯字符串或 locale → 文本映射;核心原样透传,由前端解析。
+/// Display text provided by a plugin: a plain string or a locale → text map; the core passes it through verbatim for the frontend to resolve.
 pub type LocalizedText = serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -92,7 +92,7 @@ pub struct ImportDefinition {
 pub const OAUTH2_ADD_METHOD: &str = "oauth2.0";
 pub const OAUTH2_AUTHORIZATION_CODE_ADD_METHOD: &str = "oauth2.authorization-code";
 
-/// 桌面端看到的插件全貌。
+/// The full plugin view as seen by the desktop.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginDescriptor {
@@ -115,16 +115,16 @@ pub struct PluginProviderDescriptor {
     pub provider_type: String,
     pub resource_type: Option<String>,
     pub has_models: bool,
-    /// 已满足调用条件:模型目录非空,且需要资源时至少有一条资源。
+    /// Invocation requirements met: the model catalog is non-empty and at least one resource exists when required.
     pub configured: bool,
     pub models: Vec<PluginModelDescriptor>,
 }
 
-/// 一个可直接被 Cursor 调用的插件模型。
+/// A plugin model Cursor can call directly.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginModelDescriptor {
-    /// 稳定模型 ID:`plugin:<plugin>/<provider>/<model>`。
+    /// Stable model ID: `plugin:<plugin>/<provider>/<model>`.
     pub id: String,
     pub plugin_id: String,
     pub plugin_name: String,
@@ -153,7 +153,7 @@ pub struct PluginResourceDescriptor {
     pub resources: Vec<PluginResourceView>,
 }
 
-/// 单条资源的对外投影;凭证保留在核心存储,不进入该结构。
+/// External projection of a single resource; credentials stay in core storage and never enter this structure.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginResourceView {
@@ -176,7 +176,7 @@ pub struct ResourceMetric {
     pub reset_at_ms: Option<i64>,
 }
 
-/// 插件对一条资源的展示投影(resource.present 的返回值)。
+/// The plugin's display projection of a resource (the return value of resource.present).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResourcePresentation {
@@ -187,7 +187,7 @@ pub struct ResourcePresentation {
     pub metrics: Vec<ResourceMetric>,
 }
 
-/// 插件资源操作返回的安全详情;patch 只在核心内部应用,不会回传给桌面端。
+/// Safe details returned by a plugin resource action; the patch is only applied inside the core and never sent back to the desktop.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResourceActionResult {
@@ -223,7 +223,7 @@ pub struct ResourceActionField {
     pub value: String,
 }
 
-/// 返回给桌面端的资源操作结果,明确排除插件私有 patch。
+/// Resource action result returned to the desktop, explicitly excluding the plugin-private patch.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceActionResponse {
@@ -261,7 +261,7 @@ pub fn model_id(plugin_id: &str, provider_id: &str, model_id: &str) -> String {
     format!("{ADAPTER_ID_PREFIX}{plugin_id}/{provider_id}/{model_id}")
 }
 
-/// 解析稳定模型 ID;上游模型段允许包含 `/`。
+/// Parses a stable model ID; the upstream model segment may contain `/`.
 pub fn parse_model_id(value: &str) -> Option<(&str, &str, &str)> {
     let rest = value.strip_prefix(ADAPTER_ID_PREFIX)?;
     let (plugin_id, rest) = rest.split_once('/')?;

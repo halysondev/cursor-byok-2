@@ -2,7 +2,7 @@
 //!
 //! Cursor sends `aiserver.v1.AiService/WriteGitCommitMessage` with the staged
 //! diffs. Empty commit-settings `model_id` keeps the original behaviour and
-//! forwards the RPC unchanged (直连). A configured local model identifier
+//! forwards the RPC unchanged (pass-through). A configured local model identifier
 //! answers the request locally: truncated diffs + previous commits form the user
 //! message, the customizable commit prompt is the system prompt, and the raw
 //! completion is cleaned before being returned.
@@ -390,8 +390,11 @@ mod tests {
 
     #[test]
     fn cleaning_strips_fences_and_prefixes() {
-        let raw = "```\nCommit message: fix: 修复登录超时问题\n```";
-        assert_eq!(clean_generated_commit_message(raw), "fix: 修复登录超时问题");
+        let raw = "```\nCommit message: fix: fix login timeout\n```";
+        assert_eq!(
+            clean_generated_commit_message(raw),
+            "fix: fix login timeout"
+        );
     }
 
     #[test]
@@ -407,9 +410,12 @@ mod tests {
         });
         assert_eq!(empty, "");
         let filled = explicit_context_json(&ai::ExplicitContext {
-            context: "背景".into(),
+            context: "background".into(),
             repo_context: Some("repo".into()),
         });
-        assert_eq!(filled, "{\"context\":\"背景\",\"repo_context\":\"repo\"}");
+        assert_eq!(
+            filled,
+            "{\"context\":\"background\",\"repo_context\":\"repo\"}"
+        );
     }
 }

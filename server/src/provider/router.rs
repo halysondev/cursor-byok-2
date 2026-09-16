@@ -57,12 +57,12 @@ impl Provider for ProviderRouter {
         let stream_idle_timeout = self.stream_idle_timeout;
         Box::pin(try_stream! {
             let selected = invocation.request.model.model_id.clone();
-            // 两条分支只负责装配 Recorder 与 Provider 流;
-            // 事件消费(空闲超时看门狗、记录、错误规范化)对两者完全一致。
+            // The two branches only assemble the Recorder and the Provider stream;
+            // event consumption (idle-timeout watchdog, recording, error normalization) is identical for both.
             let (recorder, _cancel_on_drop, mut stream): (CallRecorder, CancelOnDrop, ProviderStream) =
                 if selected.starts_with(ADAPTER_ID_PREFIX) {
-                    // 插件模型与内置模型走完全相同的流程:资源选择与将来的
-                    // 负载均衡都在插件 Provider 内部。
+                    // Plugin models follow exactly the same flow as built-in models: resource
+                    // selection and future load balancing live inside the plugin Provider.
                     let plan = plugins.plan_model(&selected).await?;
                     let recorder = start_recorder(&store, &invocation, &selected, &plan.model.display_name, ProviderType::Plugin, &plan.request_url, &plan.model.model_id).await?;
                     let guard = recorder.cancel_on_drop();
@@ -239,7 +239,7 @@ async fn finish_stream(recorder: &CallRecorder, cancellation: &CancellationToken
     }
 }
 
-/// 插件模型的 Provider 实现;对路由与规范化层完全等同于内置 Provider。
+/// Provider implementation for plugin models; fully equivalent to a built-in Provider for routing and normalization.
 struct PluginModelProvider {
     registry: PluginRegistry,
     recorder: CallRecorder,
@@ -261,7 +261,7 @@ fn provider_kind(provider_type: ProviderType) -> ProviderKind {
         ProviderType::OpenAiChat => ProviderKind::OpenAiChat,
         ProviderType::OpenAiResponses => ProviderKind::OpenAiResponses,
         ProviderType::Anthropic => ProviderKind::Anthropic,
-        // 内置模型的 provider_type 只来自 ModelType,不可能是插件。
+        // A built-in model's provider_type only ever comes from ModelType; it can never be a plugin.
         ProviderType::Plugin => unreachable!("plugin models never use built-in provider configs"),
     }
 }

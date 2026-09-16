@@ -215,14 +215,14 @@ export const appStore = {
     const previous = snapshot.models;
     const byHash = new Map(previous.map((model) => [model.model_hash, model]));
     if (modelHashes.length !== previous.length || new Set(modelHashes).size !== previous.length) {
-      update({ error: t("模型配置已发生变化，请刷新后重试") });
+      update({ error: "The model configuration changed. Refresh and try again." });
       return false;
     }
     const reordered: Model[] = [];
     for (const [index, hash] of modelHashes.entries()) {
       const model = byHash.get(hash);
       if (!model) {
-        update({ error: t("模型配置已发生变化，请刷新后重试") });
+        update({ error: "The model configuration changed. Refresh and try again." });
         return false;
       }
       reordered.push({ ...model, sort_order: index + 1 });

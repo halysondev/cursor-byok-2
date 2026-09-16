@@ -1,4 +1,4 @@
-// store.go 管理调试捕获的内存索引、SQLite 持久化和订阅通知。
+// store.go manages the debug capture's in-memory index, SQLite persistence, and subscription notifications.
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// exchangeStore 保存有限内存窗口以及可选的持久化数据库连接。
+// exchangeStore holds a bounded in-memory window plus an optional persistent database connection.
 type exchangeStore struct {
 	mu           sync.RWMutex
 	max          int
@@ -27,7 +27,7 @@ type exchangeStore struct {
 	lastError    string
 }
 
-// newExchangeStore 创建仅使用内存的捕获存储。
+// newExchangeStore creates a memory-only capture store.
 func newExchangeStore(max int) *exchangeStore {
 	return &exchangeStore{
 		max:         max,
@@ -36,18 +36,18 @@ func newExchangeStore(max int) *exchangeStore {
 	}
 }
 
-// newPersistentExchangeStore 创建 SQLite 持久化捕获存储并恢复最近记录。
+// newPersistentExchangeStore creates a SQLite-persisted capture store and restores recent records.
 func newPersistentExchangeStore(path string, max int) (*exchangeStore, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return nil, fmt.Errorf("SQLite 数据库路径不能为空")
+		return nil, fmt.Errorf("SQLite database path must not be empty")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("创建 SQLite 数据目录失败: %w", err)
+		return nil, fmt.Errorf("failed to create the SQLite data directory: %w", err)
 	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, fmt.Errorf("打开 SQLite 数据库失败: %w", err)
+		return nil, fmt.Errorf("failed to open the SQLite database: %w", err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -69,11 +69,11 @@ func newPersistentExchangeStore(path string, max int) (*exchangeStore, error) {
 	return store, nil
 }
 
-// backfillDecodedExchanges 为旧记录补齐解码视图并写回数据库。
+// backfillDecodedExchanges fills in decoded views for old records and writes them back.
 func (store *exchangeStore) backfillDecodedExchanges(ctx context.Context) error {
 	rows, err := store.db.QueryContext(ctx, "SELECT payload_json FROM exchanges")
 	if err != nil {
-		return fmt.Errorf("读取待回填的 SQLite 抓包记录失败: %w", err)
+		return fmt.Errorf("failed to read SQLite capture records pending backfill: %w", err)
 	}
 	var exchanges []Exchange
 	for rows.Next() {
@@ -85,7 +85,7 @@ func (store *exchangeStore) backfillDecodedExchanges(ctx context.Context) error 
 		var exchange Exchange
 		if err := json.Unmarshal(payload, &exchange); err != nil {
 			_ = rows.Close()
-			return fmt.Errorf("解析待回填的 SQLite 抓包记录失败: %w", err)
+			return fmt.Errorf("failed to parse a SQLite capture record pending backfill: %w", err)
 		}
 		if hydrateStoredExchange(&exchange) {
 			exchanges = append(exchanges, exchange)
@@ -128,7 +128,7 @@ func (store *exchangeStore) backfillDecodedExchanges(ctx context.Context) error 
 	return nil
 }
 
-// initializeDatabase 创建调试器使用的 SQLite 表结构。
+// initializeDatabase creates the SQLite tables used by the debugger.
 func (store *exchangeStore) initializeDatabase(ctx context.Context) error {
 	for _, statement := range []string{
 		"PRAGMA journal_mode = WAL",
@@ -149,18 +149,18 @@ func (store *exchangeStore) initializeDatabase(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS exchanges_request_idx ON exchanges(request_id)",
 	} {
 		if _, err := store.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("初始化 SQLite 数据库失败: %w", err)
+			return fmt.Errorf("failed to initialize the SQLite database: %w", err)
 		}
 	}
 	return nil
 }
 
-// loadRecent 从数据库恢复内存窗口中的最新捕获。
+// loadRecent restores the most recent captures into the in-memory window.
 func (store *exchangeStore) loadRecent(ctx context.Context) error {
 	rows, err := store.db.QueryContext(ctx, `SELECT payload_json, conversation_id
 		FROM exchanges ORDER BY started_at_ms DESC, id DESC LIMIT ?`, store.max)
 	if err != nil {
-		return fmt.Errorf("读取 SQLite 抓包记录失败: %w", err)
+		return fmt.Errorf("failed to read SQLite capture records: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -171,7 +171,7 @@ func (store *exchangeStore) loadRecent(ctx context.Context) error {
 		}
 		var exchange Exchange
 		if err := json.Unmarshal(payload, &exchange); err != nil {
-			return fmt.Errorf("解析 SQLite 抓包记录失败: %w", err)
+			return fmt.Errorf("failed to parse a SQLite capture record: %w", err)
 		}
 		exchange.ConversationID = conversationID
 		store.exchanges[exchange.ID] = &exchange
@@ -180,7 +180,7 @@ func (store *exchangeStore) loadRecent(ctx context.Context) error {
 	return rows.Err()
 }
 
-// create 添加一条新的捕获并通知订阅者。
+// create adds a new capture and notifies subscribers.
 func (store *exchangeStore) create(exchange *Exchange) {
 	store.mu.Lock()
 	store.exchanges[exchange.ID] = exchange
@@ -195,17 +195,17 @@ func (store *exchangeStore) create(exchange *Exchange) {
 	store.publish(storeEvent{Type: "created", ID: exchange.ID})
 }
 
-// update 持久化修改并发布最终捕获快照。
+// update persists the modification and publishes the final capture snapshot.
 func (store *exchangeStore) update(id string, apply func(*Exchange)) {
 	store.updateWithPersistence(id, apply, true)
 }
 
-// updateTransient 只更新内存并发布流式过程快照。
+// updateTransient updates memory only and publishes the in-flight streaming snapshot.
 func (store *exchangeStore) updateTransient(id string, apply func(*Exchange)) {
 	store.updateWithPersistence(id, apply, false)
 }
 
-// updateWithPersistence 在统一锁内完成修改、关联和可选持久化。
+// updateWithPersistence performs the mutation, association, and optional persistence under one lock.
 func (store *exchangeStore) updateWithPersistence(id string, apply func(*Exchange), persist bool) {
 	store.mu.Lock()
 	exchange := store.exchanges[id]
@@ -240,4 +240,4 @@ func (store *exchangeStore) updateWithPersistence(id string, apply func(*Exchang
 	store.publish(storeEvent{Type: "updated", ID: id})
 }
 
-// summaries 返回按时间倒序排列的请求摘要。
+// summaries returns request summaries in reverse chronological order.

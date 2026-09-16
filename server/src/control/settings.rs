@@ -1,16 +1,12 @@
 //! Implements settings management endpoints.
 use crate::Result;
-use axum::{
-    extract::State,
-    http::{header, HeaderMap},
-    Json,
-};
+use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::store::{
-    CommitPromptLocale, CommitSettings, DesktopSettings, PortSettings, ProxySettings,
-    ProxySettingsInput, StatisticsStorage, StatisticsStorageScope, TabSettings,
-    TokenPricingSettings,
+    CommitSettings, DesktopSettings, PortSettings, ProxySettings, ProxySettingsInput,
+    StatisticsStorage, StatisticsStorageScope, TabSettings, TokenPricingSettings,
+    DEFAULT_COMMIT_PROMPT,
 };
 
 use super::{ControlService, ObservabilitySettings};
@@ -93,37 +89,30 @@ pub async fn update_desktop(
     get_desktop(State(service)).await
 }
 
-/// Settings view for commit message generation. Empty `model_id` means 直连
-/// (forward the original Cursor RPC). A non-empty value is a configured
-/// built-in or plugin model identifier. Empty `prompt` means "use the built-in default".
+/// Settings view for commit message generation. Empty `model_id` means
+/// pass-through (forward the original Cursor RPC). A non-empty value is a
+/// configured built-in or plugin model identifier. Empty `prompt` means "use
+/// the built-in default".
 #[derive(Serialize)]
 pub struct CommitSettingsView {
     pub model_id: String,
     pub prompt: String,
-    pub prompt_locale: CommitPromptLocale,
     pub default_prompt: &'static str,
 }
 
 impl CommitSettingsView {
-    fn new(settings: CommitSettings, default_locale: CommitPromptLocale) -> Self {
+    fn new(settings: CommitSettings) -> Self {
         Self {
             model_id: settings.model_id,
             prompt: settings.prompt,
-            prompt_locale: settings.prompt_locale,
-            default_prompt: default_locale.default_prompt(),
+            default_prompt: DEFAULT_COMMIT_PROMPT.trim(),
         }
     }
 }
 
-pub async fn get_commit(
-    State(service): State<ControlService>,
-    headers: HeaderMap,
-) -> Result<Json<CommitSettingsView>> {
+pub async fn get_commit(State(service): State<ControlService>) -> Result<Json<CommitSettingsView>> {
     let settings = service.commit_settings().await?;
-    Ok(Json(CommitSettingsView::new(
-        settings,
-        requested_commit_locale(&headers),
-    )))
+    Ok(Json(CommitSettingsView::new(settings)))
 }
 
 pub async fn update_commit(
@@ -131,8 +120,7 @@ pub async fn update_commit(
     Json(settings): Json<CommitSettings>,
 ) -> Result<Json<CommitSettingsView>> {
     let saved = service.set_commit_settings(settings).await?;
-    let default_locale = saved.prompt_locale;
-    Ok(Json(CommitSettingsView::new(saved, default_locale)))
+    Ok(Json(CommitSettingsView::new(saved)))
 }
 
 pub async fn get_pricing_settings(
@@ -146,30 +134,4 @@ pub async fn update_pricing_settings(
     Json(settings): Json<TokenPricingSettings>,
 ) -> Result<Json<TokenPricingSettings>> {
     Ok(Json(service.set_pricing_settings(settings).await?))
-}
-
-fn requested_commit_locale(headers: &HeaderMap) -> CommitPromptLocale {
-    headers
-        .get(header::ACCEPT_LANGUAGE)
-        .and_then(|value| value.to_str().ok())
-        .map(CommitPromptLocale::from_interface_language)
-        .unwrap_or(CommitPromptLocale::EnUs)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn commit_default_prompt_locale_comes_from_interface_language() {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::ACCEPT_LANGUAGE, "zh-CN".parse().unwrap());
-        assert_eq!(requested_commit_locale(&headers), CommitPromptLocale::ZhCn);
-
-        headers.insert(header::ACCEPT_LANGUAGE, "en-US".parse().unwrap());
-        assert_eq!(requested_commit_locale(&headers), CommitPromptLocale::EnUs);
-
-        headers.insert(header::ACCEPT_LANGUAGE, "pt-BR".parse().unwrap());
-        assert_eq!(requested_commit_locale(&headers), CommitPromptLocale::EnUs);
-    }
 }

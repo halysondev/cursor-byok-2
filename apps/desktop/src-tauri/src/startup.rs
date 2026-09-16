@@ -75,19 +75,17 @@ pub(crate) fn report_logging_failure(error: &(dyn Error + 'static)) {
 fn show_fatal_dialog(details: &str, log_directory: Option<&std::path::Path>) {
     let log_guidance = match log_directory {
         Some(directory) => format!(
-            "日志目录 / Log directory:\n{}\n\n请将最新的日志文件发送给开发者。\nPlease send the latest log file to the developer.",
+            "Log directory:\n{}\n\nPlease send the latest log file to the developer.",
             directory.display()
         ),
-        None => "日志系统也未能启动，因此没有生成日志文件。\nLogging also failed to initialize, so no log file was created."
-            .to_owned(),
+        None => "Logging also failed to initialize, so no log file was created.".to_owned(),
     };
-    let description = format!(
-        "Cursor BYOK 无法启动 / failed to start.\n\n错误 / Error:\n{details}\n\n{log_guidance}"
-    );
+    let description =
+        format!("Cursor BYOK failed to start.\n\nError:\n{details}\n\n{log_guidance}");
 
     let _ = MessageDialog::new()
         .set_level(MessageLevel::Error)
-        .set_title("Cursor BYOK 启动失败 / Startup Error")
+        .set_title("Cursor BYOK Startup Error")
         .set_description(description)
         .set_buttons(MessageButtons::Ok)
         .show();

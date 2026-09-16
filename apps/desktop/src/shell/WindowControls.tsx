@@ -35,14 +35,14 @@ export function WindowControls() {
   }, []);
 
   const appWindow = getCurrentWindow();
-  const maximizeLabel = maximized ? t("还原窗口") : t("最大化窗口");
+  const maximizeLabel = maximized ? "Restore window" : "Maximize window";
 
   return <div className={styles.root}>
     <button
       type="button"
       className={styles.button}
-      aria-label={t("最小化窗口")}
-      title={t("最小化窗口")}
+      aria-label={"Minimize window"}
+      title={"Minimize window"}
       onClick={() => void appWindow.minimize()}
     >
       <Icon icon={windowMinimizeIcon} size="1.1em" />
@@ -59,8 +59,8 @@ export function WindowControls() {
     <button
       type="button"
       className={[styles.button, styles.close].join(" ")}
-      aria-label={t("关闭窗口")}
-      title={t("关闭窗口")}
+      aria-label={"Close window"}
+      title={"Close window"}
       onClick={() => void appWindow.close()}
     >
       <Icon icon={windowCloseIcon} size="1.1em" />

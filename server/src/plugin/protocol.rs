@@ -32,7 +32,7 @@ pub enum WorkerMessage {
         #[serde(default)]
         error: Option<String>,
     },
-    /// 流式请求(provider.invoke)在最终 Result 之前发出的模型事件。
+    /// Model events a streaming request (provider.invoke) emits before the final Result.
     Event {
         id: String,
         event: serde_json::Value,

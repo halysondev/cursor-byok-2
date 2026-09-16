@@ -12,42 +12,35 @@ export type CursorModelTestState =
 export function CursorModelTestResult({ state, testing = false, compact = false }: {
   state?: CursorModelTestState;
   testing?: boolean;
-  /** 列表行内的紧凑徽标形态:未测试时不渲染,详情放入悬浮提示。 */
+  /** Compact badge form for list rows: renders nothing when untested; details go in the tooltip. */
   compact?: boolean;
 }) {
   if (testing) {
     return compact
-      ? <span className={`${styles.compact} ${styles.testing}`}>{t("测试中…")}</span>
-      : <div className={`${styles.root} ${styles.testing}`}><span className={styles.summary}>{t("测试中…")}</span></div>;
+      ? <span className={`${styles.compact} ${styles.testing}`}>{"Testing…"}</span>
+      : <div className={`${styles.root} ${styles.testing}`}><span className={styles.summary}>{"Testing…"}</span></div>;
   }
   if (!state) {
-    return compact ? null : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{t("未测试")}</span></div>;
+    return compact ? null : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{"Not tested"}</span></div>;
   }
   if (state.status === "cancelled") {
     return compact
-      ? <span className={`${styles.compact} ${styles.idle}`}>{t("测试已取消")}</span>
-      : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{t("测试已取消")}</span></div>;
+      ? <span className={`${styles.compact} ${styles.idle}`}>{"Test cancelled"}</span>
+      : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{"Test cancelled"}</span></div>;
   }
 
   const success = state.status === "success";
   const summary = success
-    ? t("速度：{speed} tokens/s", { speed: formatSpeed(state.result.tokens_per_second) })
-    : t("错误：{error}", { error: state.error });
+    ? `Speed: ${formatSpeed(state.result.tokens_per_second)} tokens/s`
+    : `Error: ${state.error}`;
   const detail = success
-    ? t("速度 {speed} tokens/s · 首字 {firstText} ms · 总耗时 {duration} ms · 输出 {tokens} tokens{estimated} · 返回：{output}", {
-      speed: formatSpeed(state.result.tokens_per_second),
-      firstText: state.result.first_valid_response_ms ?? "--",
-      duration: state.result.duration_ms,
-      tokens: state.result.output_tokens,
-      estimated: state.result.tokens_estimated ? t("（估算）") : "",
-      output: state.result.output || "--",
-    })
-    : t("测试失败：{error}", { error: state.error });
+    ? `Speed ${formatSpeed(state.result.tokens_per_second)} tokens/s · first token ${state.result.first_valid_response_ms ?? "--"} ms · total ${state.result.duration_ms} ms · output ${state.result.output_tokens} tokens${state.result.tokens_estimated ? "(estimated)" : ""} · response: ${state.result.output || "--"}`
+    : `Test failed: ${state.error}`;
 
   if (compact) {
     return <TooltipTrigger label={detail}>
       <span className={`${styles.compact} ${success ? styles.success : styles.error}`}>
-        {success ? `${formatSpeed(state.result.tokens_per_second)} tokens/s` : t("测试失败")}
+        {success ? `${formatSpeed(state.result.tokens_per_second)} tokens/s` : "Test failed"}
         <Icon icon={informationOutlineIcon} size="1em" />
       </span>
     </TooltipTrigger>;
@@ -55,7 +48,7 @@ export function CursorModelTestResult({ state, testing = false, compact = false 
 
   return <div className={`${styles.root} ${success ? styles.success : styles.error}`}>
     <span className={styles.summary}>{summary}</span>
-    <TooltipTrigger label={detail}><button type="button" className={styles.details}>{t("查看详情")}<Icon icon={informationOutlineIcon} size="1.1em" /></button></TooltipTrigger>
+    <TooltipTrigger label={detail}><button type="button" className={styles.details}>{"View details"}<Icon icon={informationOutlineIcon} size="1.1em" /></button></TooltipTrigger>
   </div>;
 }
 

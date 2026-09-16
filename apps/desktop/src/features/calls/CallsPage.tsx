@@ -30,5 +30,5 @@ export function CallsPage() {
   }, []);
 
   const content = <div className={styles.page}><CallTable calls={calls} onDetails={(call) => void appStore.openCallDetails(call.call_id)} /></div>;
-  return <PageContent fixed title={t("调用")} contentClassName={styles.pageContent} sections={[{ key: "calls", estimatedHeight: 720, content }]} />;
+  return <PageContent fixed title={"Calls"} contentClassName={styles.pageContent} sections={[{ key: "calls", estimatedHeight: 720, content }]} />;
 }

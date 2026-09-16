@@ -1,7 +1,8 @@
 //! Serves Cursor user rules: upstream-first with an offline markdown cache.
 //!
-//! 每个请求先回放离线日志再尝试上游;上游成功时把结果写穿到本地镜像,
-//! 上游不可达时降级为本地 md 存储并记录日志等待回放。
+//! Each request first replays the offline log, then tries upstream. When upstream
+//! succeeds the result is written through to the local mirror; when upstream is
+//! unreachable it degrades to local md storage and logs the change for later replay.
 mod store;
 mod sync;
 
@@ -96,7 +97,7 @@ pub(crate) struct KnowledgeBaseRemoveResponse {
     success: bool,
 }
 
-/// 规则存储与并发锁;经 axum Extension 注入四个 handler。
+/// Rule storage plus its concurrency lock; injected into the four handlers via axum Extension.
 #[derive(Clone)]
 pub struct KnowledgeService {
     inner: Arc<Inner>,
@@ -112,7 +113,7 @@ impl KnowledgeService {
         Self::with_root(config::managed_data_dir()?.join("rules"))
     }
 
-    /// 指定存储根目录构造;managed() 与集成测试共用。
+    /// Constructs with an explicit storage root; shared by managed() and the integration tests.
     pub fn with_root(root: std::path::PathBuf) -> Result<Self> {
         Ok(Self {
             inner: Arc::new(Inner {
@@ -192,7 +193,7 @@ pub async fn list(
                 if let Ok(reply) =
                     connect::decode_unary::<KnowledgeBaseListResponse>(&response.body)
                 {
-                    // 带 git_origin 过滤的列表只是子集,整体覆盖会误删其他规则。
+                    // A list filtered by git_origin is only a subset; overwriting wholesale would wrongly delete other rules.
                     if reply.success && git_origin.is_empty() {
                         sync::mirror(store, reply.all_results)?;
                     }

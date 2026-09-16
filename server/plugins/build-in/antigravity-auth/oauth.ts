@@ -140,14 +140,8 @@ async function complete(
 export const antigravityAuthorizationCodeOAuth: OAuth2AuthorizationCodeAddMethod = {
   type: "oauth2.authorization-code",
   id: "google-antigravity",
-  displayName: {
-    "en-US": "Sign in with Google (Antigravity)",
-    "zh-CN": "使用 Google (Antigravity) 登录",
-  },
-  description: {
-    "en-US": "Authorize Antigravity with your Google Account for Gemini and Claude models.",
-    "zh-CN": "使用 Google 账号完成 Antigravity 授权，以使用 Gemini 与 Claude 模型。",
-  },
+  displayName: "Sign in with Google (Antigravity)",
+  description: "Authorize Antigravity with your Google Account for Gemini and Claude models.",
   begin,
   complete,
 };

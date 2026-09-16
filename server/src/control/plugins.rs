@@ -57,7 +57,7 @@ pub async fn import(
     ))
 }
 
-/// 以附件形式返回账号资源导出文件,便于浏览器直接下载。
+/// Returns the account-resource export file as an attachment so browsers download it directly.
 pub async fn export_resources(
     State(service): State<ControlService>,
     Path((plugin_id, resource_type)): Path<(String, String)>,

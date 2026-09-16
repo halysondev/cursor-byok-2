@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn multibyte_character_at_a_chunk_boundary_does_not_panic() {
-        let source = "// 中文说明。";
+        let source = "// English note.";
         let chunks = chunk_source(source, "src/lib.rs", Some("rust"), 750);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].content, source);

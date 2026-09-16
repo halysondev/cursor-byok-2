@@ -12,7 +12,7 @@ export function SecretTextInput({ className, ...props }: InputHTMLAttributes<HTM
   const [visible, setVisible] = useState(false);
   return <div className={styles.secret}>
     <input {...props} type={visible ? "text" : "password"} className={[styles.input, className].filter(Boolean).join(" ")} />
-    <button type="button" className={styles.secretToggle} aria-label={visible ? t("隐藏敏感内容") : t("显示敏感内容")} onClick={() => setVisible((current) => !current)}>
+    <button type="button" className={styles.secretToggle} aria-label={visible ? "Hide sensitive content" : "Show sensitive content"} onClick={() => setVisible((current) => !current)}>
       <Icon icon={visible ? eyeOffIcon : eyeIcon} size="1.1em" />
     </button>
   </div>;

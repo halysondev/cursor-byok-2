@@ -125,7 +125,7 @@ pub struct ImportResponse {
     pub model_sync_error: Option<String>,
 }
 
-/// 路由分支在建立 Recorder 时需要的插件模型元数据。
+/// Plugin model metadata a route branch needs when building a Recorder.
 #[derive(Clone, Debug)]
 pub struct PluginInvocationPlan {
     pub model: PluginModelDescriptor,
@@ -173,7 +173,7 @@ impl PluginRegistry {
         plugins
     }
 
-    /// 已满足调用条件的全部插件模型;每个模型独立进入 Cursor 目录。
+    /// All plugin models that meet their invocation requirements; each enters the Cursor catalog independently.
     pub async fn configured_models(&self) -> Vec<PluginModelDescriptor> {
         let Some(executable) = self.inner.runtime.executable() else {
             return Vec::new();
@@ -233,8 +233,8 @@ impl PluginRegistry {
         Ok(PluginInvocationPlan { model, request_url })
     }
 
-    /// 插件模型的统一 Provider 流:选首个可用资源,经 Worker 执行,
-    /// 事件与内置 Provider 走同一管道。未来的负载均衡在这里换资源重试。
+    /// Unified Provider stream for plugin models: pick the first usable resource, execute via the Worker,
+    /// and pipe events through the same channel as built-in Providers. Future load balancing retries resources here.
     pub fn stream_model(
         &self,
         invocation: ModelInvocation,
@@ -327,8 +327,8 @@ impl PluginRegistry {
                     "plugin '{plugin_id}' does not define OAuth method '{method_id}'"
                 ))
             })?;
-        // 同一添加入口只有一个活跃生命周期。重新开始时先丢弃旧会话，
-        // Drop 授权码会话中的 CallbackHandle 会立即释放 loopback listener。
+        // Only one active lifecycle per add entry point. On restart, drop the old session first;
+        // dropping the CallbackHandle of an auth-code session releases the loopback listener immediately.
         self.inner.oauth_sessions.lock().await.retain(|_, session| {
             session.plugin_id != plugin_id
                 || session.resource_type != resource_type
@@ -610,7 +610,8 @@ impl PluginRegistry {
                 })
             }
             OAuth2Poll::Completed { resources } => {
-                // 持久化成功后才销毁设备码会话:写盘瞬时失败时下次轮询还能重试。
+                // Destroy the device-code session only after persistence succeeds: a transient
+                // write failure still lets the next poll retry.
                 let response = self
                     .persist_oauth_resources(
                         &entry,
@@ -785,7 +786,7 @@ impl PluginRegistry {
         })
     }
 
-    /// 导出某资源类型的全部私有数据,供备份或迁移;格式与批量导入兼容。
+    /// Export all private data of a resource type for backup or migration; the format is bulk-import compatible.
     pub async fn export_resources(
         &self,
         plugin_id: &str,
@@ -904,7 +905,7 @@ impl PluginRegistry {
             .find_record(plugin_id, resource_type, resource_id)
             .await?;
         if resource.can_remove {
-            // 上游撤销失败不阻塞本地删除:用户必须能移除已失效的资源。
+            // A failed upstream revocation must not block local deletion: users must be able to remove dead resources.
             if let Err(error) = self
                 .worker(&entry, &executable)
                 .await
@@ -1111,7 +1112,7 @@ impl PluginRegistry {
         }
     }
 
-    /// 资源到位后刷新使用该资源类型的 Provider 模型目录;失败只报告不中断。
+    /// Once resources exist, refresh the model catalog of Providers using that resource type; failures are reported but non-fatal.
     async fn sync_provider_models_for_resource(
         &self,
         entry: &PluginEntry,
@@ -1186,7 +1187,7 @@ impl PluginRegistry {
         Ok(models.len())
     }
 
-    /// 第一版选择策略:按创建顺序取首个可用资源;冷却到期视为可用。
+    /// First-version selection: take the first usable resource in creation order; a cooled-down resource counts as usable.
     async fn select_resource(
         &self,
         plugin_id: &str,

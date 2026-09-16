@@ -50,8 +50,8 @@ function formatAxisLabel(bucketStartMs: number, granularity: TokenUsageGranulari
   if (granularity === "minute") return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
   if (granularity === "hour") return `${pad(value.getHours())}:00`;
   const day = value.getUTCDay();
-  if (day === 6) return t("周六");
-  if (day === 0) return t("周日");
+  if (day === 6) return "Saturday";
+  if (day === 0) return "Sunday";
   return formatDay(value);
 }
 
@@ -102,11 +102,11 @@ export function DailyTokenUsageChart({
         const day = data[first.dataIndex];
         return [
           formatTooltipTime(day.bucketStartMs, granularity),
-          `${t("总请求")}：${formatCompactInteger(totalTokens(day))}`,
-          `${colorMark(seriesColors.input)}${t("输入（非缓存）")}：${formatCompactInteger(day.inputTokens)}`,
-          `${colorMark(seriesColors.cacheRead)}${t("缓存输入")}：${formatCompactInteger(day.cacheReadTokens)}`,
-          `${colorMark(seriesColors.cacheWrite)}${t("缓存写入")}：${formatCompactInteger(day.cacheWriteTokens)}`,
-          `${colorMark(seriesColors.output)}${t("模型输出")}：${formatCompactInteger(day.outputTokens)}`,
+          `${"Total requests"}: ${formatCompactInteger(totalTokens(day))}`,
+          `${colorMark(seriesColors.input)}${"Input (non-cached)"}: ${formatCompactInteger(day.inputTokens)}`,
+          `${colorMark(seriesColors.cacheRead)}${"Cached input"}: ${formatCompactInteger(day.cacheReadTokens)}`,
+          `${colorMark(seriesColors.cacheWrite)}${"Cache write"}: ${formatCompactInteger(day.cacheWriteTokens)}`,
+          `${colorMark(seriesColors.output)}${"Model output"}: ${formatCompactInteger(day.outputTokens)}`,
         ].join("<br/>");
       },
     },
@@ -132,7 +132,7 @@ export function DailyTokenUsageChart({
     },
     series: [
       {
-        name: t("无用量"),
+        name: "No usage",
         type: "bar",
         stack: "empty-placeholder",
         data: data.map((day) => totalTokens(day) === 0 ? emptyBarHeight : 0),
@@ -143,7 +143,7 @@ export function DailyTokenUsageChart({
         emphasis: { disabled: true },
       },
       {
-        name: t("输入（非缓存）"),
+        name: "Input (non-cached)",
         type: "bar",
         stack: "tokens",
         data: data.map(({ inputTokens }) => inputTokens),
@@ -152,7 +152,7 @@ export function DailyTokenUsageChart({
         ...seriesFocus,
       },
       {
-        name: t("缓存输入"),
+        name: "Cached input",
         type: "bar",
         stack: "tokens",
         data: data.map(({ cacheReadTokens }) => cacheReadTokens),
@@ -161,7 +161,7 @@ export function DailyTokenUsageChart({
         ...seriesFocus,
       },
       {
-        name: t("缓存写入"),
+        name: "Cache write",
         type: "bar",
         stack: "tokens",
         data: data.map(({ cacheWriteTokens }) => cacheWriteTokens),
@@ -170,7 +170,7 @@ export function DailyTokenUsageChart({
         ...seriesFocus,
       },
       {
-        name: t("模型输出"),
+        name: "Model output",
         type: "bar",
         stack: "tokens",
         data: data.map(({ outputTokens }) => outputTokens),
@@ -184,7 +184,7 @@ export function DailyTokenUsageChart({
           label: {
             show: hovered,
             position: "insideStartTop",
-            formatter: t("平均"),
+            formatter: "Average",
             color: levelLineColor,
             distance: 8,
           },

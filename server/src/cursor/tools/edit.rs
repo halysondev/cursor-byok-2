@@ -16,7 +16,7 @@ pub(crate) fn path(call: &ToolCall) -> Result<String> {
     if normalized(&call.name) == "editnotebook" {
         string(call, "target_notebook")
     } else {
-        // Claude 系模型常按 Claude Code 习惯输出 file_path/filePath,做别名兼容。
+        // Claude-family models often emit file_path/filePath the way Claude Code does; accept both as aliases.
         string_any(call, &["path", "file_path", "filePath"])
     }
 }
@@ -63,7 +63,7 @@ pub(crate) fn after_read(
     };
     let after = match normalized(&call.name).as_str() {
         "write" => {
-            // Claude Code 习惯的 content 作为 contents 的别名兼容。
+            // Accepts the Claude Code-style content as an alias for contents.
             normalize_newlines(
                 &string_any(call, &["contents", "content"]).map_err(|error| error.to_string())?,
             )

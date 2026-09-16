@@ -7,7 +7,7 @@ export default defineProviderPlugin({
   providers: [grokProvider],
   resources: [{
     type: RESOURCE_TYPE,
-    displayName: { "en-US": "Grok accounts", "zh-CN": "Grok 账号" },
+    displayName: "Grok accounts",
     add: [grokDeviceOAuth],
     import: credentialImport,
     present: presentAccount,

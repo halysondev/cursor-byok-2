@@ -4,7 +4,7 @@ use std::path::Path;
 use super::definition::write_if_changed;
 use crate::Result;
 
-/// 随二进制打包的内置插件文件;发布构建没有源码目录,靠这里预装。
+/// Built-in plugin files packed into the binary; release builds have no source tree, so preinstalling relies on these.
 const CODEX_AUTH: &[(&str, &str)] = &[
     (
         "plugin.json",
@@ -174,8 +174,9 @@ const PLUGINS: &[(&str, &[(&str, &str)])] = &[
     ("antigravity-auth", ANTIGRAVITY_AUTH),
 ];
 
-/// 把内置插件预装到 installed 目录。manifest 的 version 是缓存键:
-/// 版本一致时零写盘;版本变化时整目录同步并清理旧版本残留文件。
+/// Preinstalls built-in plugins into the installed directory. The manifest version is the
+/// cache key: a matching version writes nothing; a version change resyncs the whole
+/// directory and removes files left behind by the old version.
 pub(super) fn install(installed: &Path) -> Result<()> {
     for (name, files) in PLUGINS {
         let directory = installed.join(name);
@@ -228,7 +229,7 @@ fn write_plugin(directory: &Path, files: &[(&str, &str)]) -> Result<()> {
     Ok(())
 }
 
-/// 删除插件目录中不在嵌入清单里的文件与空目录(旧版本残留)。
+/// Deletes files and empty directories inside the plugin directory that are absent from the embedded manifest (old-version residue).
 fn prune_unknown_files(root: &Path, directory: &Path, files: &[(&str, &str)]) -> Result<()> {
     for entry in std::fs::read_dir(directory)? {
         let entry = entry?;
@@ -277,7 +278,7 @@ mod tests {
             .join("antigravity-auth/assets/antigravity.svg")
             .is_file());
 
-        // 版本一致:本地改动与额外文件保持原样,不发生任何写盘。
+        // Same version: local edits and extra files are left untouched and nothing is written.
         std::fs::write(plugin.join("main.ts"), "edited").unwrap();
         std::fs::write(plugin.join("stale.ts"), "extra").unwrap();
         install(root.path()).unwrap();
@@ -287,7 +288,7 @@ mod tests {
         );
         assert!(plugin.join("stale.ts").exists());
 
-        // 版本变化:整目录同步回嵌入内容并清理残留。
+        // Version changed: resync the whole directory back to the embedded contents and clean up residue.
         let manifest = std::fs::read_to_string(plugin.join("plugin.json")).unwrap();
         let mut value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
         value["version"] = serde_json::Value::String("0.0.1".into());

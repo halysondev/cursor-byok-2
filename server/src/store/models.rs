@@ -366,8 +366,8 @@ mod tests {
         }
     }
 
-    /// 分组名是纯展示字段:入库时去除首尾空白、空串归一为 NULL,
-    /// 更新分组名不得改变模型身份哈希。
+    /// group_name is a display-only field: it is trimmed before storage, an empty string
+    /// normalizes to NULL, and updating it must not change the model identity hash.
     #[tokio::test]
     async fn group_name_round_trips_without_changing_model_identity() {
         let directory = tempfile::tempdir().unwrap();

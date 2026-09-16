@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { api, pluginText, type PluginDescriptor, type PluginImportFile, type PluginRuntimePhase, type PluginRuntimeStatus } from "../../shared/api";
-import { useI18n } from "../../i18n/store";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { ActionMenu, type ActionMenuItem } from "../../shared/ui/ActionMenu";
@@ -62,7 +61,7 @@ export function PluginManagementPage() {
 
   return <>
     <PageContent
-      title={t("插件配置")}
+      title={"Plugins"}
       sections={[{ key: "installed-plugins", estimatedHeight, content }]}
     />
     <RuntimeProgressModal
@@ -75,11 +74,11 @@ export function PluginManagementPage() {
       fullHeight
       open={selectedPlugin !== null}
       title={selected?.mode === "settings"
-        ? t("{name} 账号管理", { name: selectedPlugin?.name ?? "" })
-        : t("添加 {name} 账号", { name: selectedPlugin?.name ?? "" })}
+        ? `${selectedPlugin?.name ?? ""} accounts`
+        : `Add ${selectedPlugin?.name ?? ""} account`}
       onClose={() => setSelected(null)}
       onSubmit={() => setSelected(null)}
-      submitLabel={t("确定")}
+      submitLabel={"Confirm"}
     >
       {selected?.mode === "add" && selectedPlugin && <PluginAddPanel plugin={selectedPlugin} onConfigured={() => setSelected(null)} />}
       {selected?.mode === "settings" && selectedPlugin && <PluginSettingsPanel plugin={selectedPlugin} />}
@@ -93,23 +92,23 @@ function RuntimeGate({ status, starting, onInitialize }: { status: PluginRuntime
   const failed = status?.state === "failed";
   const unsupported = status?.state === "unsupported";
   const title = checking
-    ? t("正在检查插件运行时")
+    ? "Checking the plugin runtime"
     : failed
-      ? t("插件运行时初始化失败")
+      ? "Plugin runtime initialization failed"
       : unsupported
-        ? t("当前系统不支持插件运行时")
-        : t("需要先初始化插件运行时");
+        ? "Plugin runtime is not supported on this system"
+        : "Initialize the plugin runtime first";
   const description = failed
-    ? t("请重试初始化")
+    ? "Try initializing again"
     : unsupported
-      ? status.error ?? t("当前操作系统或 CPU 架构暂不受支持")
-      : t("初始化将下载并安装插件运行时。");
+      ? status.error ?? "This operating system or CPU architecture is not currently supported"
+      : "Initialization downloads and installs the plugin runtime.";
 
   return <div className={styles.gate}>
     <strong>{title}</strong>
     <span>{description}</span>
     {!unsupported && <Button variant="primary" disabled={checking || initializing} onClick={onInitialize}>
-      {checking ? t("检查中…") : initializing ? t("初始化中…") : failed ? t("重新初始化插件") : t("初始化插件")}
+      {checking ? "Checking…" : initializing ? "Initializing…" : failed ? "Reinitialize plugins" : "Initialize plugins"}
     </Button>}
   </div>;
 }
@@ -120,8 +119,8 @@ function PluginCards({ plugins, onOpen }: {
 }) {
   if (plugins.length === 0) {
     return <div className={styles.empty}>
-      <strong>{t("还没有安装插件")}</strong>
-      <span>{t("安装插件后会显示在这里。")}</span>
+      <strong>{"No plugins installed"}</strong>
+      <span>{"Installed plugins will appear here."}</span>
     </div>;
   }
   return <div className={styles.pluginGrid}>
@@ -133,7 +132,6 @@ function PluginCard({ plugin, onOpen }: {
   plugin: PluginDescriptor;
   onOpen: (pluginId: string, mode: "add" | "settings") => void;
 }) {
-  const { locale } = useI18n();
   const { ports } = useAppStore();
   const message = useMessage();
   const importInput = useRef<HTMLInputElement>(null);
@@ -141,7 +139,7 @@ function PluginCard({ plugin, onOpen }: {
   const configured = plugin.providers.some((provider) => provider.configured);
   const accountCount = plugin.resources.reduce((count, resource) => count + resource.resources.length, 0);
   const modelCount = plugin.providers.reduce((count, provider) => count + provider.models.length, 0);
-  const subtitle = plugin.providers.map((provider) => pluginText(provider.displayName, locale)).join(" · ") || plugin.id;
+  const subtitle = plugin.providers.map((provider) => pluginText(provider.displayName)).join(" · ") || plugin.id;
   const importResource = plugin.resources.find((resource) => resource.import);
   const exportResource = plugin.resources.find((resource) => resource.resources.length > 0);
 
@@ -154,9 +152,9 @@ function PluginCard({ plugin, onOpen }: {
       );
       const result = await api.importPluginResources(plugin.id, importResource.type, entries);
       await appStore.refreshPlugins();
-      const summary = t("导入完成：新增 {added}，更新 {updated}", { added: result.added, updated: result.updated });
+      const summary = `Import finished: ${result.added} added, ${result.updated} updated`;
       if (result.modelSyncError) {
-        message(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }), { duration: 5000 });
+        message(`The account was saved, but model sync failed: ${result.modelSyncError}`, { duration: 5000 });
       } else if (result.warnings.length > 0) {
         message(`${summary} · ${result.warnings.join("; ")}`, { duration: 5000 });
       } else {
@@ -175,7 +173,7 @@ function PluginCard({ plugin, onOpen }: {
       ? [
           {
             id: "import",
-            label: importing ? t("正在导入…") : t("批量导入"),
+            label: importing ? "Importing…" : "Bulk import",
             disabled: importing,
             onSelect: () => importInput.current?.click(),
           },
@@ -185,7 +183,7 @@ function PluginCard({ plugin, onOpen }: {
       ? [
           {
             id: "export",
-            label: t("批量导出"),
+            label: "Bulk export",
             onSelect: () =>
               void api.openExternalUrl(
                 api.pluginResourceExportUrl(
@@ -213,15 +211,12 @@ function PluginCard({ plugin, onOpen }: {
         <span
           className={`${styles.stateBadge} ${configured ? styles.stateReady : ""}`}
         >
-          {configured ? t("已配置") : t("未配置")}
+          {configured ? "Configured" : "Not configured"}
         </span>
       </div>
       <div className={styles.pluginMeta}>
         <span>
-          {t("{accounts} 个账号 · {models} 个模型", {
-            accounts: accountCount,
-            models: modelCount,
-          })}
+          {`${accountCount} accounts · ${modelCount} models`}
         </span>
         {plugin.author && (
           <span className={styles.pluginAuthor}>{plugin.author}</span>
@@ -231,19 +226,19 @@ function PluginCard({ plugin, onOpen }: {
         <TruncatedButton
           size="small"
           variant="primary"
-          label={t("添加账号")}
+          label={"Add account"}
           onClick={() => onOpen(plugin.id, "add")}
         />
         {configured && (
           <TruncatedButton
             size="small"
-            label={t("账号管理")}
+            label={"Manage accounts"}
             onClick={() => onOpen(plugin.id, "settings")}
           />
         )}
         {moreItems.length > 0 && (
           <span className={styles.moreAction}>
-            <ActionMenu label={t("更多")} items={moreItems} />
+            <ActionMenu label={"More"} items={moreItems} />
           </span>
         )}
         {importResource && (
@@ -267,15 +262,15 @@ function RuntimeProgressModal({ open, status, starting, onClose }: { open: boole
   const total = status?.total_bytes ?? null;
   const percent = total && total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null;
   const stage = status?.state === "ready"
-    ? t("插件运行时初始化完成")
+    ? "Plugin runtime initialized"
     : status?.state === "failed"
-      ? t("插件运行时初始化失败")
+      ? "Plugin runtime initialization failed"
       : phaseText(status?.phase ?? null);
 
   return <Modal
     open={open}
-    title={t("初始化插件运行时")}
-    closeLabel={status?.state === "ready" ? t("完成") : initializing ? t("取消") : t("关闭")}
+    title={"Initialize plugin runtime"}
+    closeLabel={status?.state === "ready" ? "Done" : initializing ? "Cancel" : "Close"}
     onClose={onClose}
   >
     <div className={styles.progressContent} aria-live="polite">
@@ -284,7 +279,7 @@ function RuntimeProgressModal({ open, status, starting, onClose }: { open: boole
         <div
           className={styles.progressBar}
           role="progressbar"
-          aria-label={t("下载进度")}
+          aria-label={"Download progress"}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent ?? undefined}
@@ -295,23 +290,23 @@ function RuntimeProgressModal({ open, status, starting, onClose }: { open: boole
           />
         </div>
         <span>
-          {total ? t("已下载 {downloaded} / {total}", { downloaded: formatBytes(downloaded), total: formatBytes(total) }) : t("已下载 {downloaded}", { downloaded: formatBytes(downloaded) })}
+          {total ? `Downloaded ${formatBytes(downloaded)} / ${formatBytes(total)}` : `Downloaded ${formatBytes(downloaded)}`}
         </span>
       </>}
-      {status?.state === "failed" && <span className={styles.error}>{t("请重试初始化")}</span>}
-      {status?.state === "ready" && <span>{t("插件运行时 {version} 已安装，可以开始使用插件。", { version: status.version })}</span>}
+      {status?.state === "failed" && <span className={styles.error}>{"Try initializing again"}</span>}
+      {status?.state === "ready" && <span>{`Plugin runtime ${status.version} is installed and ready to use.`}</span>}
     </div>
   </Modal>;
 }
 
 function phaseText(phase: PluginRuntimePhase | null) {
   switch (phase) {
-    case "checking": return t("正在检查插件运行时");
-    case "downloading": return t("正在下载插件运行时");
-    case "verifying": return t("正在验证插件运行时下载文件");
-    case "installing": return t("正在安装插件运行时");
-    case "validating": return t("正在验证插件运行时");
-    default: return t("正在准备插件运行时");
+    case "checking": return "Checking the plugin runtime";
+    case "downloading": return "Downloading the plugin runtime";
+    case "verifying": return "Verifying the plugin runtime download";
+    case "installing": return "Installing the plugin runtime";
+    case "validating": return "Validating the plugin runtime";
+    default: return "Preparing the plugin runtime";
   }
 }
 

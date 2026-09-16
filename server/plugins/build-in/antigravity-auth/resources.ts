@@ -349,7 +349,7 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   if (data.quota?.claude) {
     metrics.push({
       id: "claude",
-      label: { "en-US": "Claude", "zh-CN": "Claude" },
+      label: "Claude",
       unit: "percent",
       value: data.quota.claude.remainingPercent,
       ...(data.quota.claude.resetAtMs ? { resetAtMs: data.quota.claude.resetAtMs } : {}),
@@ -358,7 +358,7 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   if (data.quota?.gemini) {
     metrics.push({
       id: "gemini",
-      label: { "en-US": "Gemini", "zh-CN": "Gemini" },
+      label: "Gemini",
       unit: "percent",
       value: data.quota.gemini.remainingPercent,
       ...(data.quota.gemini.resetAtMs ? { resetAtMs: data.quota.gemini.resetAtMs } : {}),
@@ -588,15 +588,8 @@ export async function parseCredentialFiles(
 }
 
 export const credentialImport: ResourceImportSupport = {
-  displayName: {
-    "en-US": "Import Google / Antigravity Credentials",
-    "zh-CN": "导入 Google / Antigravity 凭证",
-  },
-  description: {
-    "en-US":
-      "Import a JSON, TXT, or environment file containing Antigravity tokens or Google API keys.",
-    "zh-CN": "导入包含 Antigravity Token 或 Google API Key 的 JSON、TXT 或环境变量文件。",
-  },
+  displayName: "Import Google / Antigravity Credentials",
+  description: "Import a JSON, TXT, or environment file containing Antigravity tokens or Google API keys.",
   accept: [".json", ".txt", ".key", ".env"],
   multiple: true,
   parse: async (

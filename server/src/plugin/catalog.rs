@@ -42,10 +42,10 @@ impl PluginCatalog {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&installed, fs::Permissions::from_mode(0o700))?;
         }
-        // 内置插件按版本预装进 installed;版本一致时不写盘。
+        // Built-in plugins are preinstalled into installed by version; a matching version writes nothing.
         super::builtin::install(&installed)?;
-        // 扫描顺序即优先级:debug 下源码目录优先,保证内置插件热改生效;
-        // 发布构建只有 installed 一个根。
+        // Scan order is priority: in debug builds the source directory wins so edits to
+        // built-in plugins take effect immediately; release builds only have the installed root.
         #[cfg(debug_assertions)]
         let roots = vec![
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/build-in"),
@@ -141,7 +141,7 @@ fn child_directories(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(directories)
 }
 
-/// 应用过旧时拒绝加载,让插件的 minAppVersion 声明生效。
+/// Refuses to load when the app is too old, honoring the plugin's minAppVersion declaration.
 fn require_app_version(manifest: &PluginManifest, app_version: &str) -> Result<()> {
     let Some(minimum) = &manifest.min_app_version else {
         return Ok(());
@@ -178,7 +178,7 @@ async fn load_plugin(
     })
 }
 
-/// 显示文本必须是非空字符串,或全为非空字符串的 locale 映射。
+/// Display text must be a non-empty string or a locale map of non-empty strings.
 fn validate_localized_text(value: &serde_json::Value, label: &str) -> Result<()> {
     match value {
         serde_json::Value::String(text) if !text.trim().is_empty() => Ok(()),

@@ -1,4 +1,4 @@
-// store_queries.go 负责调试捕获记录的查询、持久化辅助和订阅通知。
+// store_queries.go handles queries, persistence helpers, and subscription notifications for debug capture records.
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// summaries 返回指定会话的捕获摘要列表。
+// summaries returns the capture summary list for the given conversation.
 func (store *exchangeStore) summaries(conversationID string) ([]ExchangeSummary, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -54,7 +54,7 @@ func (store *exchangeStore) summaries(conversationID string) ([]ExchangeSummary,
 	return result, nil
 }
 
-// get 返回内存或数据库中的完整捕获副本。
+// get returns the full capture copy from memory or the database.
 func (store *exchangeStore) get(id string) (Exchange, bool, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -75,7 +75,7 @@ func (store *exchangeStore) get(id string) (Exchange, bool, error) {
 	return *persisted, true, nil
 }
 
-// loadPersistedLocked 从 SQLite 读取单条捕获并在必要时解码回填。
+// loadPersistedLocked reads a single capture from SQLite and backfills decoded views when needed.
 func (store *exchangeStore) loadPersistedLocked(id string) (*Exchange, error) {
 	var payload []byte
 	var conversationID string
@@ -94,7 +94,7 @@ func (store *exchangeStore) loadPersistedLocked(id string) (*Exchange, error) {
 	return &persisted, nil
 }
 
-// clear 清除数据库、内存索引和会话关联。
+// clear removes the database, in-memory indexes, and conversation associations.
 func (store *exchangeStore) clear() error {
 	store.mu.Lock()
 	var err error
@@ -116,7 +116,7 @@ func (store *exchangeStore) clear() error {
 	return err
 }
 
-// conversations 按会话聚合持久化捕获统计。
+// conversations aggregates persisted capture statistics by conversation.
 func (store *exchangeStore) conversations() ([]ConversationSummary, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -162,7 +162,7 @@ func (store *exchangeStore) conversations() ([]ConversationSummary, error) {
 	return result, rows.Err()
 }
 
-// persistLocked 将当前捕获快照写入 SQLite。
+// persistLocked writes the current capture snapshot into SQLite.
 func (store *exchangeStore) persistLocked(exchange *Exchange) {
 	if store.db == nil || exchange == nil {
 		return
@@ -193,7 +193,7 @@ func (store *exchangeStore) persistLocked(exchange *Exchange) {
 	}
 }
 
-// associateConversationLocked 根据请求标识补齐会话关联。
+// associateConversationLocked backfills the conversation association from the request ID.
 func (store *exchangeStore) associateConversationLocked(exchange *Exchange) {
 	if exchange.RequestID == "" {
 		return
@@ -228,7 +228,7 @@ func (store *exchangeStore) associateConversationLocked(exchange *Exchange) {
 	}
 }
 
-// maxNumericID 返回数据库中已使用的最大数字捕获编号。
+// maxNumericID returns the largest numeric capture ID already used in the database.
 func (store *exchangeStore) maxNumericID() uint64 {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -239,7 +239,7 @@ func (store *exchangeStore) maxNumericID() uint64 {
 	return maximum
 }
 
-// close 关闭数据库连接并终止后续订阅通知。
+// close closes the database connection and stops further subscription notifications.
 func (store *exchangeStore) close() error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -251,14 +251,14 @@ func (store *exchangeStore) close() error {
 	return err
 }
 
-// status 返回数据库路径和最近一次数据库错误。
+// status returns the database path and the most recent database error.
 func (store *exchangeStore) status() (string, string) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	return store.databasePath, store.lastError
 }
 
-// subscribe 注册一个捕获变化订阅者。
+// subscribe registers a capture-change subscriber.
 func (store *exchangeStore) subscribe() (<-chan storeEvent, func()) {
 	updates := make(chan storeEvent, 32)
 	store.mu.Lock()
@@ -274,7 +274,7 @@ func (store *exchangeStore) subscribe() (<-chan storeEvent, func()) {
 	}
 }
 
-// publish 非阻塞地广播捕获变化事件。
+// publish broadcasts a capture-change event without blocking.
 func (store *exchangeStore) publish(event storeEvent) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -286,21 +286,21 @@ func (store *exchangeStore) publish(event storeEvent) {
 	}
 }
 
-// cloneExchange 深拷贝捕获及其请求响应载荷。
+// cloneExchange deep-copies a capture and its request/response payloads.
 func cloneExchange(exchange Exchange) Exchange {
 	exchange.Request = clonePayload(exchange.Request)
 	exchange.Response = clonePayload(exchange.Response)
 	return exchange
 }
 
-// clonePayload 深拷贝头信息和 Connect 帧切片。
+// clonePayload deep-copies headers and Connect frame slices.
 func clonePayload(payload Payload) Payload {
 	payload.Headers = append([]Header(nil), payload.Headers...)
 	payload.Frames = append([]FrameView(nil), payload.Frames...)
 	return payload
 }
 
-// elapsedMS 计算从开始时间到当前时间的毫秒耗时。
+// elapsedMS computes milliseconds elapsed since the start time.
 func elapsedMS(startedAt time.Time) int64 {
 	if startedAt.IsZero() {
 		return 0
@@ -308,7 +308,7 @@ func elapsedMS(startedAt time.Time) int64 {
 	return time.Since(startedAt).Milliseconds()
 }
 
-// sortedHeaders 生成脱敏且按名称排序的请求头列表。
+// sortedHeaders produces a redacted, name-sorted header list.
 func sortedHeaders(headers map[string][]string) []Header {
 	result := make([]Header, 0, len(headers))
 	for name, values := range headers {
@@ -320,7 +320,7 @@ func sortedHeaders(headers map[string][]string) []Header {
 			value += item
 		}
 		if isSensitiveHeader(name) && value != "" {
-			value = "[已隐藏]"
+			value = "[redacted]"
 		}
 		result = append(result, Header{Name: name, Value: value})
 	}
@@ -330,7 +330,7 @@ func sortedHeaders(headers map[string][]string) []Header {
 	return result
 }
 
-// isSensitiveHeader 判断请求头是否包含鉴权或隐私信息。
+// isSensitiveHeader reports whether a header carries auth or private information.
 func isSensitiveHeader(name string) bool {
 	switch httpCanonicalLower(name) {
 	case "authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key":
@@ -340,7 +340,7 @@ func isSensitiveHeader(name string) bool {
 	}
 }
 
-// httpCanonicalLower 将请求头名称规范化为小写形式。
+// httpCanonicalLower normalizes a header name to lowercase.
 func httpCanonicalLower(value string) string {
 	buffer := make([]byte, len(value))
 	for index := range value {

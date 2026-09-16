@@ -135,14 +135,8 @@ async function poll(sessionValue: JsonValue, context: PluginContext): Promise<OA
 export const grokDeviceOAuth: OAuth2AddMethod = {
   type: "oauth2.0",
   id: "xai-device",
-  displayName: {
-    "en-US": "Sign in with xAI",
-    "zh-CN": "使用 xAI 登录",
-  },
-  description: {
-    "en-US": "Authorize this device with xAI, then add the resulting Grok account.",
-    "zh-CN": "在 xAI 完成设备授权后,自动添加对应的 Grok 账号。",
-  },
+  displayName: "Sign in with xAI",
+  description: "Authorize this device with xAI, then add the resulting Grok account.",
   begin,
   poll,
 };

@@ -142,7 +142,8 @@ fn create_main_window(
     builder.build()
 }
 
-/// 按需打开主窗口:webview 仅在需要界面时创建,关闭窗口即销毁释放内存。
+/// Opens the main window on demand: the webview is created only when the UI is
+/// needed, and closing the window destroys it to release memory.
 pub(crate) fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = window.unminimize();
@@ -214,7 +215,7 @@ pub fn run() -> ExitCode {
             ))?;
             let config = {
                 let mut config = Config::desktop()?;
-                // 插件的 minAppVersion 按桌面应用版本判定,而不是内嵌 server 库的版本。
+                // A plugin's minAppVersion is checked against the desktop app version, not the embedded server library's version.
                 config.app_version = env!("CARGO_PKG_VERSION").into();
                 config
             };
@@ -277,8 +278,9 @@ pub fn run() -> ExitCode {
     };
 
     app.run(|app, event| match event {
-        // code 为 None 表示所有窗口已被关闭(轻量模式),阻止退出,
-        // 转发服务继续在托盘后台运行;code 为 Some 时是显式退出请求。
+        // A None code means every window was closed (lightweight mode): block the
+        // exit so the forwarding service keeps running in the tray. A Some code
+        // is an explicit quit request.
         RunEvent::ExitRequested { code, api, .. } => match code {
             None => api.prevent_exit(),
             Some(_) => {

@@ -1,4 +1,4 @@
-// messages.go 解析消息声明、字段数组和字段类型信息。
+// messages.go parses message declarations, field arrays, and field type information.
 package main
 
 import (
@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// extractMessages 从多种 bundle 语法中提取消息声明。
+// extractMessages pulls message declarations out of the various bundle syntaxes.
 func extractMessages(text string, moduleStarts []int) []Message {
 	var messages []Message
 	messageExists := func(typeName, varName string) bool {
@@ -21,17 +21,17 @@ func extractMessages(text string, moduleStarts []int) []Message {
 		return false
 	}
 
-	// 形式一：变量引用继承基类并在类体中声明 typeName 和 fields。
-	// 先找所有 "变量名 = class 内部类名" 定义
-	// JS 变量名可以包含 $ 符号，如 B$e, qg 等
-	// 需要同时捕获外部变量名和内部类名，因为字段引用可能用任一个
+	// Form one: a variable references an inheriting base class whose class body declares typeName and fields.
+	// First find every "varName = class innerClassName" definition.
+	// JS variable names may contain $, e.g. B$e, qg.
+	// Capture both the outer variable name and the inner class name, since field references may use either.
 	classDefRe := regexp.MustCompile(`([\w$]+)\s*=\s*class\s+([\w$]+)\s+extends\s+[\w$.]+\s*\{`)
 	classMatches := classDefRe.FindAllStringSubmatchIndex(text, -1)
 
-	// 从任意包的 this.typeName 字段读取完整类型名。
+	// Read the full type name from this.typeName on any package.
 	typeNameRe := regexp.MustCompile(`this\.typeName\s*=\s*"([\w.]+)"`)
 
-	// 从 this.fields 的 newFieldList 回调读取字段数组。
+	// Read the field array from the this.fields newFieldList callback.
 	fieldsRe := regexp.MustCompile(`this\.fields\s*=\s*\w+(?:\.proto3)?\.util\.newFieldList\s*\(\s*\(\s*\)\s*=>\s*\[`)
 
 	for _, classMatch := range classMatches {
@@ -39,7 +39,7 @@ func extractMessages(text string, moduleStarts []int) []Message {
 		internalName := text[classMatch[4]:classMatch[5]]
 		classStart := classMatch[0]
 
-		// 找到类的结束位置（匹配大括号）
+		// Find the end of the class (matching braces)
 		classEnd := findClassEnd(text, classMatch[1]-1)
 		if classEnd == -1 {
 			continue
@@ -47,20 +47,20 @@ func extractMessages(text string, moduleStarts []int) []Message {
 
 		classBody := text[classStart:classEnd]
 
-		// 在类体内查找 typeName
+		// Look for typeName inside the class body
 		typeMatch := typeNameRe.FindStringSubmatch(classBody)
 		if typeMatch == nil {
 			continue
 		}
 		typeName := typeMatch[1]
 
-		// 在类体内查找 fields
+		// Look for fields inside the class body
 		fieldsMatch := fieldsRe.FindStringIndex(classBody)
 		if fieldsMatch == nil {
 			continue
 		}
 
-		// 找到 fields 数组的开始位置
+		// Find the start of the fields array
 		bracketPos := classStart + fieldsMatch[1] - 1
 		fields := extractFieldArray(text, bracketPos)
 
@@ -78,20 +78,20 @@ func extractMessages(text string, moduleStarts []int) []Message {
 		messages = append(messages, msg)
 	}
 
-	// 形式二：匹配转译或压缩 bundle 中连续赋值的消息声明。
-	// 例如 i.runtime=n.proto3,i.typeName="agent.v1.McpArgs",i.fields=n.proto3.util.newFieldList(()=>[{...}])。
+	// Form two: message declarations as consecutive assignments in transpiled or minified bundles.
+	// e.g. i.runtime=n.proto3,i.typeName="agent.v1.McpArgs",i.fields=n.proto3.util.newFieldList(()=>[{...}]).
 	assignmentRe := regexp.MustCompile(`([\w$]+)\.typeName\s*=\s*"([\w.]+)"\s*,\s*[\w$]+\.fields\s*=\s*\w+(?:\.\w+)*\.util\.newFieldList\s*\(\s*\(\s*\)\s*=>\s*\[`)
 	assignmentMatches := assignmentRe.FindAllStringSubmatchIndex(text, -1)
 	for _, m := range assignmentMatches {
 		varName := text[m[2]:m[3]]
 		typeName := text[m[4]:m[5]]
 
-		// 跳过已经由类体形式提取的重复消息。
+		// Skip duplicates already extracted by the class-body form.
 		if messageExists(typeName, varName) {
 			continue
 		}
 
-		// 正则停在左方括号之前，从匹配尾部定位数组起点。
+		// The regex stops before the opening bracket; the array start is located from the match tail.
 		start := m[1] - 1
 		if start < 0 || start >= len(text) || text[start] != '[' {
 			continue
@@ -111,8 +111,8 @@ func extractMessages(text string, moduleStarts []int) []Message {
 		})
 	}
 
-	// 形式三：匹配现代 @bufbuild/protobuf 工厂调用。
-	// 例如 Req=A.makeMessageType("aiserver.v1.HasSeenAdRequest",()=>[{...}])。
+	// Form three: modern @bufbuild/protobuf factory calls.
+	// e.g. Req=A.makeMessageType("aiserver.v1.HasSeenAdRequest",()=>[{...}]).
 	messageFactoryRe := regexp.MustCompile(`([\w$]+)\s*=\s*[\w$.]+\.makeMessageType\s*\(\s*["']([\w.]+)["']\s*,\s*\(\s*\)\s*=>\s*\[`)
 	factoryMatches := messageFactoryRe.FindAllStringSubmatchIndex(text, -1)
 	for _, m := range factoryMatches {
@@ -139,8 +139,8 @@ func extractMessages(text string, moduleStarts []int) []Message {
 		})
 	}
 
-	// 空消息直接传字段数组，不使用延迟回调。
-	// 例如 Res=A.makeMessageType("aiserver.v1.MarkAdAsSeenResponse",[])。
+	// Empty messages pass the field array directly instead of a lazy callback.
+	// e.g. Res=A.makeMessageType("aiserver.v1.MarkAdAsSeenResponse",[]).
 	emptyMessageFactoryRe := regexp.MustCompile(`([\w$]+)\s*=\s*[\w$.]+\.makeMessageType\s*\(\s*["']([\w.]+)["']\s*,\s*\[`)
 	emptyFactoryMatches := emptyMessageFactoryRe.FindAllStringSubmatchIndex(text, -1)
 	for _, m := range emptyFactoryMatches {
@@ -170,7 +170,7 @@ func extractMessages(text string, moduleStarts []int) []Message {
 	return messages
 }
 
-// findClassEnd 查找类定义的配对右花括号。
+// findClassEnd finds the closing brace paired with a class definition.
 func findClassEnd(text string, openBrace int) int {
 	depth := 0
 	for i := openBrace; i < len(text); i++ {
@@ -186,9 +186,9 @@ func findClassEnd(text string, openBrace int) int {
 	return -1
 }
 
-// extractFieldArray 从左方括号位置解析完整字段数组。
+// extractFieldArray parses a complete field array starting at its opening bracket.
 func extractFieldArray(text string, start int) []Field {
-	// 查找字段数组的配对右方括号。
+	// Find the closing bracket paired with the field array.
 	depth := 0
 	end := start
 	for i := start; i < len(text); i++ {
@@ -205,10 +205,10 @@ func extractFieldArray(text string, start int) []Field {
 
 	arrayText := text[start:end]
 
-	// 按每个花括号块解析独立字段对象。
+	// Parse an independent field object per brace block.
 	var fields []Field
 
-	// 依次查找字段对象。
+	// Find field objects in order.
 	fieldObjects := extractFieldObjects(arrayText)
 
 	for _, fieldObj := range fieldObjects {
@@ -224,7 +224,7 @@ func extractFieldArray(text string, start int) []Field {
 	return fields
 }
 
-// extractFieldObjects 从数组文本中提取独立字段对象。
+// extractFieldObjects extracts independent field objects from array text.
 func extractFieldObjects(arrayText string) []string {
 	var objects []string
 	depth := 0
@@ -248,16 +248,16 @@ func extractFieldObjects(arrayText string) []string {
 	return objects
 }
 
-// parseFieldObject 解析包含编号、名称、类型和修饰符的单个字段对象。
+// parseFieldObject parses a single field object with number, name, type, and modifiers.
 func parseFieldObject(obj string) (*Field, error) {
-	// 提取字段编号。
+	// Extract the field number.
 	noMatch := noRe.FindStringSubmatch(obj)
 	if noMatch == nil {
 		return nil, errors.New("missing field no")
 	}
 	no, _ := strconv.Atoi(noMatch[1])
 
-	// 提取字段名称。
+	// Extract the field name.
 	nameMatch := nameRe.FindStringSubmatch(obj)
 	if nameMatch == nil {
 		return nil, errors.New("missing field name")
@@ -267,7 +267,7 @@ func parseFieldObject(obj string) (*Field, error) {
 		return nil, fmt.Errorf("invalid field name: %s", name)
 	}
 
-	// 提取字段类别。
+	// Extract the field kind.
 	kindMatch := kindRe.FindStringSubmatch(obj)
 	if kindMatch == nil {
 		return nil, errors.New("missing field kind")
@@ -280,13 +280,13 @@ func parseFieldObject(obj string) (*Field, error) {
 		Kind: kind,
 	}
 
-	// 类型 T 可以是标量编号、变量名或 getEnumType 枚举调用。
+	// Type T may be a scalar number, a variable name, or a getEnumType enum call.
 
-	// 枚举优先匹配 getEnumType 调用。
+	// Enums match getEnumType calls first.
 	if enumMatch := enumTypeRe.FindStringSubmatch(obj); enumMatch != nil {
 		field.T = enumMatch[1]
 	} else {
-		// 其余类型匹配普通 T 属性值。
+		// Other types match a plain T property value.
 		if tMatch := tRe.FindStringSubmatch(obj); tMatch != nil {
 			if t, err := strconv.Atoi(tMatch[1]); err == nil {
 				field.T = t
@@ -298,7 +298,7 @@ func parseFieldObject(obj string) (*Field, error) {
 		}
 	}
 
-	// 仅在当前字段对象内检查 oneof 分组。
+	// Check oneof grouping only within the current field object.
 	if oneofMatch := oneofRe.FindStringSubmatch(obj); oneofMatch != nil {
 		candidate := strings.TrimSpace(oneofMatch[1])
 		if oneofNameRe.MatchString(candidate) {
@@ -306,24 +306,24 @@ func parseFieldObject(obj string) (*Field, error) {
 		}
 	}
 
-	// 仅在当前字段对象内检查 repeated；压缩 JS 中 !0 表示真。
+	// Check repeated only within the current field object; !0 means true in minified JS.
 	if repeatedRe.MatchString(obj) {
 		field.Repeated = true
 	}
 
-	// 仅在当前字段对象内检查 optional。
+	// Check optional only within the current field object.
 	if optRe.MatchString(obj) {
 		field.Opt = true
 	}
 
-	// map 字段通过 K 键类型和 V 值描述共同表示。
+	// map fields are represented by a K key type and a V value descriptor together.
 	if field.Kind == "map" {
-		// 提取 map 键类型。
+		// Extract the map key type.
 		if keyMatch := keyRe.FindStringSubmatch(obj); keyMatch != nil {
 			field.MapKey, _ = strconv.Atoi(keyMatch[1])
 		}
 
-		// 提取 map 值类型，兼容属性顺序变化。
+		// Extract the map value type, tolerating property order changes.
 		if valueMatch := mapValueRe.FindStringSubmatch(obj); valueMatch != nil {
 			valueObj := valueMatch[1]
 			if kindMatch := mapValueKRe.FindStringSubmatch(valueObj); kindMatch != nil {

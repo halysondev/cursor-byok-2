@@ -11,19 +11,19 @@ export type ModelDefinition = {
   description?: string;
   maxOutputTokens?: number;
   capabilities?: ModelCapabilities;
-  /** 之后的调用原样传回;永远不会展示给用户。 */
+  /** Passed back verbatim on later calls; never shown to the user. */
   privateData?: JsonValue;
 };
 
-/** 宿主目录中持久化的一条模型。 */
+/** A model persisted in the host catalog. */
 export type ModelSnapshot = ModelDefinition;
 
 export type ModelListInput = {
-  /** 模型发现需要认证时为首个可用资源,否则为 null。 */
+  /** The first usable resource when model discovery needs authentication, otherwise null. */
   resource: ResourceSnapshot | null;
 };
 
 export type ModelSupport = {
-  /** 列举成功后,宿主用返回值整体替换该 Provider 的模型目录。 */
+  /** After a successful list, the host replaces this Provider's model catalog wholesale. */
   list(input: ModelListInput, context: PluginContext): Promise<ModelDefinition[]>;
 };

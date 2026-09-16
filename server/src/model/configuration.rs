@@ -18,7 +18,7 @@ pub enum ProviderType {
     OpenAiResponses,
     #[serde(rename = "anthropic")]
     Anthropic,
-    /// 插件执行的调用;协议细节在插件内部,核心只按统一事件流记录。
+    /// A call executed by a plugin; the protocol details live inside the plugin and the core only records the unified event stream.
     #[serde(rename = "plugin")]
     Plugin,
 }
@@ -87,7 +87,7 @@ pub struct ModelConfigInput {
     #[serde(default)]
     pub sort_order: i64,
     pub display_name: String,
-    /// 供应商分组的自定义显示名;同一 base_url 主机下的模型共享。
+    /// Custom display name for a provider group; shared by all models under the same base_url host.
     #[serde(default)]
     pub group_name: Option<String>,
     #[serde(rename = "type")]

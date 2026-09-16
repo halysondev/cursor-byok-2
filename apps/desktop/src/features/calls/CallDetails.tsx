@@ -12,25 +12,25 @@ export function CallDetails({ detail }: { detail: CallDetail }) {
   const responseBytes = chunks.reduce((total, chunk) => total + chunk.byte_count, 0);
   const fields: Array<[string, string | number]> = [
     ["Call ID", call.call_id],
-    [t("调用类型"), call.call_kind === "cursor_official" ? t("Cursor 官方") : "LLM"],
-    [t("路由"), call.route === "cursor_official" ? t("Cursor 官方") : "BYOK"],
+    ["Call type", call.call_kind === "cursor_official" ? "Cursor official" : "LLM"],
+    ["Route", call.route === "cursor_official" ? "Cursor official" : "BYOK"],
     ["Run ID", call.run_id],
     ["Conversation ID", call.conversation_id],
-    [t("上游调用序号"), call.provider_call_index],
+    ["Provider call sequence", call.provider_call_index],
     ["Model Hash", show(call.model_hash)],
-    [t("上游类型"), call.provider_type],
-    [t("上游地址"), call.provider_url],
-    [t("最终请求类型"), call.request_type],
-    [t("最终请求地址"), call.request_url],
+    ["Provider type", call.provider_type],
+    ["Provider URL", call.provider_url],
+    ["Final request type", call.request_type],
+    ["Final request URL", call.request_url],
     ["Model ID", call.model_id],
-    [t("显示名称"), call.display_name],
-    [t("思考强度"), show(call.reasoning_effort)],
-    ["Fast", call.fast == null ? "-" : call.fast ? t("是") : t("否")],
-    [t("状态"), call.status],
+    ["Display name", call.display_name],
+    ["Reasoning effort", show(call.reasoning_effort)],
+    ["Fast", call.fast == null ? "-" : call.fast ? "Yes" : "No"],
+    ["Status", call.status],
     ["Finish Reason", show(call.finish_reason)],
     ["HTTP Status", show(call.http_status)],
     ["Created At", `${call.created_at_ms} · ${new Date(call.created_at_ms).toLocaleString()}`],
-    [t("耗时"), timing(call.duration_ms)],
+    ["Duration", timing(call.duration_ms)],
     ["TTFB", timing(call.ttfb_ms)],
     ["TTFR", timing(call.ttfr_ms)],
     ["TTFT", timing(call.ttft_ms)],
@@ -40,38 +40,38 @@ export function CallDetails({ detail }: { detail: CallDetail }) {
     ["Cache Read Token", show(call.cache_read_tokens)],
     ["Cache Write Token", show(call.cache_write_tokens)],
     ["Reasoning Token", show(call.reasoning_tokens)],
-    [t("消息数"), call.message_count],
-    [t("工具数"), call.tool_count],
-    [t("详细记录"), call.detailed ? t("是") : t("否")],
+    ["Messages", call.message_count],
+    ["Tools", call.tool_count],
+    ["Detailed records", call.detailed ? "Yes" : "No"],
     ["Error Kind", show(call.error_kind)],
     ["Error Message", show(call.error_message)],
   ];
 
   const tabs: TabItem[] = [
-    { value: "call", label: t("调用信息"), content: <section>
+    { value: "call", label: "Call information", content: <section>
       <dl className={styles.details}>{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd><code>{value}</code></dd></div>)}</dl>
     </section> },
-    { value: "request", label: t("请求"), content: <section>
+    { value: "request", label: "Request", content: <section>
       {request ? <>
-        <div className={styles.meta}>{t("字节数")}：{request.byte_count}</div>
-        <h4>{t("请求头")}</h4><JsonEditor ariaLabel={t("请求头")} value={JSON.stringify(request.headers)} readOnly />
-        <h4>{t("请求体")}</h4><JsonEditor ariaLabel={t("请求体")} value={JSON.stringify(request.body)} readOnly detail />
-      </> : <div className={styles.empty}>{t("未记录请求内容，请开启详细记录后重试。")}</div>}
+        <div className={styles.meta}>{"Bytes"}: {request.byte_count}</div>
+        <h4>{"Request headers"}</h4><JsonEditor ariaLabel={"Request headers"} value={JSON.stringify(request.headers)} readOnly />
+        <h4>{"Request body"}</h4><JsonEditor ariaLabel={"Request body"} value={JSON.stringify(request.body)} readOnly detail />
+      </> : <div className={styles.empty}>{"Request content was not recorded. Enable detailed records and try again."}</div>}
     </section> },
-    { value: "response", label: t("响应流"), content: <section>
+    { value: "response", label: "Response stream", content: <section>
       {chunks.length > 0 ? <>
-        <div className={styles.meta}>{t("分块数")}：{chunks.length} · {t("字节数")}：{responseBytes}</div>
-        <JsonEditor ariaLabel={t("响应流")} value={responseBody} readOnly detail />
-      </> : <div className={styles.empty}>{t("未记录响应内容，请开启详细记录后重试。")}</div>}
+        <div className={styles.meta}>{"Chunks"}: {chunks.length} · {"Bytes"}: {responseBytes}</div>
+        <JsonEditor ariaLabel={"Response stream"} value={responseBody} readOnly detail />
+      </> : <div className={styles.empty}>{"Response content was not recorded. Enable detailed records and try again."}</div>}
     </section> },
   ];
 
-  if (cursorTrace) tabs.push({ value: "cursor-trace", label: t("Cursor 追踪"), content: <section>
+  if (cursorTrace) tabs.push({ value: "cursor-trace", label: "Cursor tracing", content: <section>
       <div className={styles.meta}>
-        Request ID：{cursorTrace.trace.request_id} · {t("工件数")}：{cursorTrace.artifacts.length}
+        Request ID: {cursorTrace.trace.request_id} · {"Artifacts"}: {cursorTrace.artifacts.length}
       </div>
       <JsonEditor
-        ariaLabel={t("Cursor 追踪")}
+        ariaLabel={"Cursor tracing"}
         value={JSON.stringify({ trace: cursorTrace.trace, artifacts: cursorTrace.artifacts })}
         readOnly
         detail

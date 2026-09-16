@@ -4,7 +4,7 @@ import { accountData } from "./resources.ts";
 const LANGUAGE_MODELS_URL = "https://api.x.ai/v1/language-models";
 const MODELS_URL = "https://api.x.ai/v1/models";
 
-/** 免费账号无权调用模型列表接口(403 spending-limit);退回已知模型。 */
+/** Free accounts cannot call the model list endpoint (403 spending-limit); fall back to the known models. */
 export const FALLBACK_MODELS: ModelDefinition[] = [
   {
     id: "grok-4.6",
@@ -34,7 +34,7 @@ function modalities(value: unknown): string[] {
     : [];
 }
 
-/** 把模型 ID 变成可读名称,如 grok-4-fast → Grok 4 Fast。 */
+/** Turns a model ID into a readable name, e.g. grok-4-fast → Grok 4 Fast. */
 function displayName(id: string): string {
   return id
     .split("-")
@@ -42,7 +42,7 @@ function displayName(id: string): string {
     .join(" ");
 }
 
-/** 兼容 /v1/language-models 的 models 数组与 /v1/models 的 data 数组。 */
+/** Accepts both the /v1/language-models `models` array and the /v1/models `data` array. */
 export function parseGrokModels(body: unknown): ModelDefinition[] {
   const root = object(body);
   const source = root?.models ?? root?.data ?? body;
@@ -76,7 +76,7 @@ export const grokModels: ModelSupport = {
       accept: "application/json",
       authorization: `Bearer ${data.accessToken}`,
     };
-    // language-models 带模态与上下文元数据;不可用时回退到标准列表。
+    // language-models carries modality and context metadata; fall back to the standard list when unavailable.
     let response = await context.network.fetch(LANGUAGE_MODELS_URL, { method: "GET", headers });
     if (response.status < 200 || response.status >= 300) {
       response = await context.network.fetch(MODELS_URL, { method: "GET", headers });

@@ -1,4 +1,4 @@
-// main.go 提供协议提取命令的参数解析、输入保护和输出调度。
+// main.go provides argument parsing, input protection, and output scheduling for the protocol extraction command.
 package main
 
 import (
@@ -10,21 +10,21 @@ import (
 	"path/filepath"
 )
 
-// inputPaths 支持命令行重复传入 bundle 路径。
+// inputPaths accepts repeated bundle paths on the command line.
 type inputPaths []string
 
-// String 返回已经登记的输入路径列表。
+// String returns the registered input paths.
 func (paths *inputPaths) String() string {
 	return fmt.Sprint([]string(*paths))
 }
 
-// Set 追加一个去除空白后的输入路径。
+// Set appends a whitespace-trimmed input path.
 func (paths *inputPaths) Set(value string) error {
 	*paths = append(*paths, value)
 	return nil
 }
 
-// bailIf 在不可恢复错误时打印信息并退出。
+// bailIf prints the message and exits on unrecoverable errors.
 func bailIf(err error) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -32,9 +32,9 @@ func bailIf(err error) {
 	}
 }
 
-// findPrettier 定位可用的 prettier 命令。
+// findPrettier locates a usable prettier command.
 func findPrettier() (string, error) {
-	// 尝试常见的 prettier 命令名
+	// Try common prettier command names
 	names := []string{"prettier", "prettier.cmd", "npx"}
 	for _, name := range names {
 		if path, err := exec.LookPath(name); err == nil {
@@ -44,9 +44,9 @@ func findPrettier() (string, error) {
 	return "", fmt.Errorf("prettier not found in PATH, please install: npm install -g prettier")
 }
 
-// main 解析参数、保护原始输入并执行协议提取。
+// main parses arguments, protects the original input, and runs the protocol extraction.
 func main() {
-	// 命令行参数
+	// Command-line arguments
 	var inputs inputPaths
 	flag.Var(&inputs, "input", "Path to a JS bundle; repeat to merge multiple bundles")
 	outputDir := flag.String("output", "", "Output directory for proto files (required; use scripts/extract.sh for the repository source)")
@@ -54,7 +54,7 @@ func main() {
 	strict := flag.Bool("strict", true, "Fail when extraction validation detects unresolved/placeholder output")
 	flag.Parse()
 
-	// 如果没有 -input 参数，尝试从位置参数获取
+	// If no -input flag was given, fall back to positional arguments
 	if len(inputs) == 0 && flag.NArg() > 0 {
 		inputs = append(inputs, flag.Args()...)
 	}
@@ -76,12 +76,12 @@ func main() {
 		}
 	}
 
-	// 要求调用者显式选择输出目录，避免在仓库中产生第二份协议来源。
+	// Require the caller to pick the output directory explicitly, so the repo does not gain a second protocol source.
 	if *outputDir == "" {
 		bailIf(fmt.Errorf("-output is required; use scripts/extract.sh to update protocols/cursor"))
 	}
 
-	// 复制到临时文件后再格式化，避免修改 Cursor 安装目录。
+	// Copy to a temp file before formatting so the Cursor install directory is never modified.
 	fmt.Printf("Copying %d source bundle(s) to temp directory...\n", len(inputs))
 	tempFileNames := make([]string, 0, len(inputs))
 	for _, inputPath := range inputs {
@@ -119,7 +119,7 @@ func main() {
 		}
 	}
 
-	// 运行提取器
+	// Run the extractor
 	fmt.Println("Extracting Proto definitions...")
 	SetStrictMode(*strict)
 	ExtractProtosFromFiles(tempFileNames, *outputDir)

@@ -1,4 +1,4 @@
-/* styles.css 组合调试器的基础、控件、详情和响应式样式。 */
+/* styles.css composes the debugger's base, control, detail, and responsive styles. */
 @import url("./styles_base.css");
 @import url("./styles_controls.css");
 @import url("./styles_detail.css");

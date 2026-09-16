@@ -13,8 +13,8 @@ export function TokenTrendChart({ calls }: { calls: LlmCall[] }) {
     xAxis: { type: "category", data: points.map((call) => new Date(call.created_at_ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })), axisLabel: { color: "#888" }, axisLine: { lineStyle: { color: "#5555" } } },
     yAxis: { type: "value", axisLabel: { color: "#888" }, splitLine: { lineStyle: { color: "#8882" } } },
     series: [
-      { name: t("输入 Token"), type: "bar", stack: "tokens", data: points.map((call) => call.input_tokens ?? 0), barMaxWidth: 22 },
-      { name: t("输出 Token"), type: "bar", stack: "tokens", data: points.map((call) => call.output_tokens ?? 0), barMaxWidth: 22 },
+      { name: "Input Tokens", type: "bar", stack: "tokens", data: points.map((call) => call.input_tokens ?? 0), barMaxWidth: 22 },
+      { name: "Output Tokens", type: "bar", stack: "tokens", data: points.map((call) => call.output_tokens ?? 0), barMaxWidth: 22 },
     ],
   };
   return <EChart option={option} />;

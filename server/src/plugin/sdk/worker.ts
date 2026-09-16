@@ -10,7 +10,7 @@ const writer = Deno.stdout.writable.getWriter();
 const pendingHost = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
 const controllers = new Map<string, AbortController>();
 let hostSequence = 0;
-// 事件与最终结果共用一条串行写队列,保证顺序。
+// Events and the final result share one serial write queue to preserve ordering.
 let writeQueue = Promise.resolve();
 
 function send(value: unknown): Promise<void> {

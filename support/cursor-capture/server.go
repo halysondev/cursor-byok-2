@@ -1,4 +1,4 @@
-// server.go 负责固定上游服务、流量捕获和调试界面的生命周期。
+// server.go owns the lifecycle of the fixed-upstream service, traffic capture, and debug UI.
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// Server 运行 Cursor API 转发服务及其本机调试界面。
+// Server runs the Cursor API forwarding service and its local debug UI.
 type Server struct {
 	config        Config
 	upstream      *url.URL
@@ -27,15 +27,15 @@ type Server struct {
 	captureMu     sync.RWMutex
 }
 
-// New 创建固定转发到 Cursor API 的协议调试服务。
+// New creates a protocol debug service that always forwards to the Cursor API.
 func New(config Config) (*Server, error) {
 	config = config.normalized()
 	if err := validateLoopbackAddress(config.ServiceAddr); err != nil {
-		return nil, fmt.Errorf("服务监听地址无效：%w", err)
+		return nil, fmt.Errorf("invalid service listen address: %w", err)
 	}
 	upstream, err := url.Parse(defaultUpstreamURL)
 	if err != nil {
-		return nil, fmt.Errorf("解析固定上游地址：%w", err)
+		return nil, fmt.Errorf("invalid fixed upstream address: %w", err)
 	}
 	store, err := newPersistentExchangeStore(config.DatabasePath, config.MaxExchanges)
 	if err != nil {
@@ -54,23 +54,23 @@ func New(config Config) (*Server, error) {
 	return server, nil
 }
 
-// Start 启动同时承载 API 转发和调试界面的单端口服务。
+// Start launches the single-port service hosting both API forwarding and the debug UI.
 func (server *Server) Start() error {
 	server.runMu.Lock()
 	defer server.runMu.Unlock()
 	if server.serviceLn != nil {
-		return errors.New("Cursor API 调试服务已经启动")
+		return errors.New("Cursor API debug service is already running")
 	}
 	serviceListener, err := net.Listen("tcp", server.config.ServiceAddr)
 	if err != nil {
-		return fmt.Errorf("启动 API 服务监听失败：%w", err)
+		return fmt.Errorf("failed to start the API service listener: %w", err)
 	}
 	server.serviceLn = serviceListener
 	go func() { _ = server.serviceServer.Serve(serviceListener) }()
 	return nil
 }
 
-// Close 立即关闭监听器、活跃连接并释放捕获存储。
+// Close immediately closes the listener, active connections, and the capture store.
 func (server *Server) Close() error {
 	server.runMu.Lock()
 	serviceServer := server.serviceServer
@@ -90,20 +90,20 @@ func (server *Server) Close() error {
 	return errors.Join(errorsList...)
 }
 
-// ServiceAddr 返回 Cursor API 服务监听地址。
+// ServiceAddr returns the Cursor API service listen address.
 func (server *Server) ServiceAddr() string { return server.config.ServiceAddr }
 
-// UIURL 返回可在浏览器中打开的调试界面地址。
+// UIURL returns the debug UI address to open in a browser.
 func (server *Server) UIURL() string {
 	return "http://" + browserAddress(server.config.ServiceAddr) + debugBasePath + "/"
 }
 
-// DatabasePath 返回捕获数据库路径。
+// DatabasePath returns the capture database path.
 func (server *Server) DatabasePath() string {
 	return server.config.DatabasePath
 }
 
-// newServiceHandler 创建单端口调试路由和固定上游流式转发。
+// newServiceHandler creates the single-port debug router and fixed-upstream streaming forwarder.
 func (server *Server) newServiceHandler() http.Handler {
 	reverseProxy := httputil.NewSingleHostReverseProxy(server.upstream)
 	reverseProxy.FlushInterval = -1

@@ -225,7 +225,7 @@ export function JsonEditor({ value, onChange, readOnly = false, autoFormat = tru
 
   return <div ref={rootRef} className={[styles.root, detail && styles.detail].filter(Boolean).join(" ")}>
     <div className={styles.toolbar}>
-      <button type="button" className={styles.formatButton} onClick={format}>{t("格式化")}</button>
+      <button type="button" className={styles.formatButton} onClick={format}>{"Format"}</button>
     </div>
     <div ref={hostRef} className={styles.host} />
   </div>;

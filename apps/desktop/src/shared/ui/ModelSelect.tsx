@@ -117,7 +117,7 @@ export function ModelSelect(props: ModelSelectProps) {
   }, [open]);
 
   const summary = mode === "multiple"
-    ? props.value.length === 0 ? t("全部") : t("已选 {count} 项", { count: props.value.length })
+    ? props.value.length === 0 ? "All" : `${props.value.length} selected`
     : options.find((option) => option.value === props.value)?.label ?? props.value;
 
   const choose = (option: ModelSelectOption) => {
@@ -153,7 +153,7 @@ export function ModelSelect(props: ModelSelectProps) {
         type="button"
         className={styles.trigger}
         disabled={disabled}
-        aria-label={t("筛选项：{label}，{summary}", { label, summary })}
+        aria-label={`Filter: ${label}, ${summary}`}
         aria-haspopup="listbox"
         aria-controls={open ? menuId : undefined}
         aria-expanded={open}
@@ -165,7 +165,7 @@ export function ModelSelect(props: ModelSelectProps) {
       {mode === "multiple" && props.value.length > 0 && <button
         type="button"
         className={styles.clear}
-        aria-label={t("清除{label}筛选", { label })}
+        aria-label={`Clear ${label} filter`}
         onClick={() => props.onChange([])}
       ><Icon icon={windowCloseIcon} size="1.1em" /></button>}
     </div>
@@ -191,7 +191,7 @@ export function ModelSelect(props: ModelSelectProps) {
           style={{ height: "100%" }}
           estimatedItemHeight={32}
           overscan={4}
-          empty={<div className={styles.empty}>{t("暂无选项")}</div>}
+          empty={<div className={styles.empty}>{"No options"}</div>}
         >{(item, index) => item.kind === "group"
           ? mode === "multiple"
             ? <GroupCheckbox
@@ -229,8 +229,8 @@ export function ModelSelect(props: ModelSelectProps) {
               </span>
             </label>}</VirtualList></div>
       {mode === "multiple" && options.length > 0 && <div className={styles.footer}>
-        <button type="button" onClick={() => props.onChange(options.map((option) => option.value))}>{t("全选")}</button>
-        <button type="button" onClick={() => props.onChange([])}>{t("全不选")}</button>
+        <button type="button" onClick={() => props.onChange(options.map((option) => option.value))}>{"Select all"}</button>
+        <button type="button" onClick={() => props.onChange([])}>{"Deselect all"}</button>
       </div>}
     </div>, document.body)}
   </>;

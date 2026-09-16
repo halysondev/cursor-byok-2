@@ -20,7 +20,7 @@ export type ActionMenuItem =
       type: "text";
     };
 
-/** 触发器 + 动作列表的下拉菜单,用于容纳卡片上的次要操作。 */
+/** A trigger plus action-list dropdown menu, used for secondary actions on cards. */
 export function ActionMenu({ label, items, disabled }: {
   label: string;
   items: ActionMenuItem[];

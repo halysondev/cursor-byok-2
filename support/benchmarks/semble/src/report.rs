@@ -104,17 +104,19 @@ pub struct ResultSummary {
 
 pub fn markdown(report: &BenchmarkReport) -> String {
     let mut output = String::new();
-    output.push_str("# Semble 与 CodeGraph React/Vue 对比基准\n\n");
+    output.push_str("# Semble vs CodeGraph React/Vue comparison benchmark\n\n");
     output.push_str(&format!(
-        "- 环境：{} {}，{}\n- 查询：Top {}，每条重复 {} 次\n- natural_language：英文行为描述；literal：多词代码/错误字面片段；symbol：精确符号名\n- 对比：natural_language、literal 使用 CodeGraph explore；symbol 使用 CodeGraph searchNodes\n- 判定：返回代码范围必须覆盖人工标注的实现行\n\n",
+        "- Environment: {} {}, {}\n- Queries: Top {}, each repeated {} times\n- natural_language: English behavioral descriptions; literal: multi-word code/error literal fragments; symbol: exact symbol names\n- Comparison: natural_language and literal use CodeGraph explore; symbol uses CodeGraph searchNodes\n- Verdict: the returned code range must cover the manually annotated implementation lines\n\n",
         report.environment.os,
         report.environment.architecture,
         report.environment.rustc,
         report.configuration.top_k,
         report.configuration.repetitions
     ));
-    output.push_str("## 整体效果\n\n");
-    output.push_str("| 系统 | 查询轨道 | Recall@1 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |\n");
+    output.push_str("## Overall effectiveness\n\n");
+    output.push_str(
+        "| System | Query track | Recall@1 | Recall@5 | Recall@10 | MRR@10 | nDCG@10 |\n",
+    );
     output.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
     for item in &report.overall {
         output.push_str(&format!(
@@ -128,9 +130,9 @@ pub fn markdown(report: &BenchmarkReport) -> String {
             item.effect.ndcg_at_10,
         ));
     }
-    output.push_str("\n## 性能对比\n\n");
-    output.push_str("冷启动就绪包含运行时加载和首次索引；Semble 查询在一秒刷新窗口内直接复用已检查索引，窗口到期或显式 refresh 时重新校验源码指纹。缓存查询与 refresh＋symbol 分开计时；查询耗时均为持久进程中的实际工具处理耗时，不含 CLI 进程启动。每条查询先预热一次。\n\n");
-    output.push_str("| 数据集 | 系统 | 冷启动就绪 | 缓存加载 | 自然语言 P50 / P95 / σ | 字面 P50 / P95 / σ | 缓存符号 P50 / P95 / σ | 刷新＋符号 P50 / P95 | 文件 / 索引单元 | 索引体积 |\n");
+    output.push_str("\n## Performance comparison\n\n");
+    output.push_str("Cold-start ready covers runtime loading and the first index; Semble queries reuse the checked index directly within a one-second refresh window, and the source fingerprint is revalidated when the window expires or an explicit refresh is requested. Cached queries and refresh+symbol are timed separately; query latency is the actual tool-handling time inside a persistent process, excluding CLI process startup. Each query is warmed up once first.\n\n");
+    output.push_str("| Dataset | System | Cold-start ready | Cached load | Natural language P50 / P95 / σ | Literal P50 / P95 / σ | Cached symbol P50 / P95 / σ | Refresh+symbol P50 / P95 | Files / index units | Index size |\n");
     output.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
     for suite in &report.suites {
         for system in &suite.systems {
@@ -170,8 +172,8 @@ pub fn markdown(report: &BenchmarkReport) -> String {
             ));
         }
     }
-    output.push_str("\n## 分数据集效果\n\n");
-    output.push_str("| 数据集 | 系统 | 轨道 | Recall@1 / @5 / @10 | MRR@10 | nDCG@10 |\n");
+    output.push_str("\n## Per-dataset effectiveness\n\n");
+    output.push_str("| Dataset | System | Track | Recall@1 / @5 / @10 | MRR@10 | nDCG@10 |\n");
     output.push_str("| --- | --- | --- | ---: | ---: | ---: |\n");
     for suite in &report.suites {
         for system in &suite.systems {
@@ -194,16 +196,16 @@ pub fn markdown(report: &BenchmarkReport) -> String {
         for system in &suite.systems {
             for track in &system.tracks {
                 output.push_str(&format!(
-                    "\n## {} · {} · {} 明细\n\n",
+                    "\n## {} · {} · {} details\n\n",
                     suite.name, system.system, track.name
                 ));
-                output.push_str("| 查询 | 首个命中 | P50 / P95 / σ | Top 1 |\n");
+                output.push_str("| Query | First hit | P50 / P95 / σ | Top 1 |\n");
                 output.push_str("| --- | ---: | ---: | --- |\n");
                 for query in &track.queries {
                     let rank = query
                         .first_relevant_rank
                         .map(|rank| rank.to_string())
-                        .unwrap_or_else(|| "未命中".into());
+                        .unwrap_or_else(|| "miss".into());
                     let top = query
                         .results
                         .first()
@@ -224,8 +226,8 @@ pub fn markdown(report: &BenchmarkReport) -> String {
             }
         }
     }
-    output.push_str("\n## 公平性说明\n\n");
-    output.push_str("自然语言和多词字面轨道调用 CodeGraph 官方推荐的 codegraph_explore，包含图扩展和最终源码读取；符号轨道调用 searchNodes。Semble 三条轨道都调用同一个混合搜索接口。所有查询共享同一组人工标注实现位置，未针对系统选择不同真值。两者输出粒度不同，因此本报告适合比较达到同一代码位置的效果和实际工具延迟，不代表各内部算法的微基准。CodeGraph 的独立 callers、callees 和 impact 能力不属于本次范围。\n");
+    output.push_str("\n## Fairness notes\n\n");
+    output.push_str("The natural-language and multi-word literal tracks call CodeGraph's officially recommended codegraph_explore, including graph expansion and the final source read; the symbol track calls searchNodes. All three Semble tracks call the same hybrid search interface. Every query shares the same set of manually annotated implementation locations; no system gets a different ground truth. The two systems emit results at different granularity, so this report compares the effectiveness of reaching the same code location and actual tool latency — it is not a microbenchmark of each internal algorithm. CodeGraph's standalone callers, callees, and impact capabilities are outside this scope.\n");
     output
 }
 

@@ -1,4 +1,4 @@
-// types.go 定义协议提取器的领域结构、诊断状态和基础类型映射。
+// types.go defines the protocol extractor's domain structs, diagnostic state, and base type mappings.
 package main
 
 import (
@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-// isGooglePkg 判断是否为无需重复生成的 Google 标准包。
+// isGooglePkg reports whether the package is a Google standard package that does not need regeneration.
 func isGooglePkg(pkg string) bool {
 	return pkg == "google.protobuf" || pkg == "google.rpc"
 }
 
-// scalarTypes 把运行时标量编号映射为 proto 类型。
+// scalarTypes maps runtime scalar numbers to proto types.
 var scalarTypes = map[int]string{
 	1:  "double",
 	2:  "float",
@@ -31,10 +31,10 @@ var scalarTypes = map[int]string{
 	18: "sint64",
 }
 
-// strictExtractionValidation 控制校验失败是否终止提取。
+// strictExtractionValidation controls whether a validation failure aborts extraction.
 var strictExtractionValidation = true
 
-// extractionDiagnostics 汇总字段解析和类型解析诊断。
+// extractionDiagnostics aggregates field-parsing and type-resolution diagnostics.
 type extractionDiagnostics struct {
 	totalFieldObjects   int
 	parsedFieldObjects  int
@@ -48,14 +48,14 @@ type extractionDiagnostics struct {
 	missingDeclarations []string
 }
 
-// newExtractionDiagnostics 创建一次提取任务的诊断容器。
+// newExtractionDiagnostics creates a diagnostics container for one extraction run.
 func newExtractionDiagnostics() *extractionDiagnostics {
 	return &extractionDiagnostics{
 		unresolvedTypeRefs: make(map[string]int),
 	}
 }
 
-// addSkippedField 记录未能解析的字段样本和原因。
+// addSkippedField records a field sample that failed to parse and the reason.
 func (d *extractionDiagnostics) addSkippedField(fieldObject string, reason error) {
 	if d == nil {
 		return
@@ -75,7 +75,7 @@ func (d *extractionDiagnostics) addSkippedField(fieldObject string, reason error
 	}
 }
 
-// addParsedField 累计成功解析的字段数量。
+// addParsedField accumulates the number of successfully parsed fields.
 func (d *extractionDiagnostics) addParsedField() {
 	if d == nil {
 		return
@@ -84,7 +84,7 @@ func (d *extractionDiagnostics) addParsedField() {
 	d.parsedFieldObjects++
 }
 
-// addUnresolvedType 按引用名称累计类型解析失败次数。
+// addUnresolvedType accumulates type-resolution failures by reference name.
 func (d *extractionDiagnostics) addUnresolvedType(ref string) {
 	if d == nil {
 		return
@@ -96,15 +96,15 @@ func (d *extractionDiagnostics) addUnresolvedType(ref string) {
 	d.unresolvedTypeRefs[key]++
 }
 
-// SetStrictMode 设置校验失败是否终止提取。
+// SetStrictMode sets whether a validation failure aborts extraction.
 func SetStrictMode(enabled bool) {
 	strictExtractionValidation = enabled
 }
 
-// activeDiagnostics 指向当前提取任务的诊断状态。
+// activeDiagnostics points at the current extraction run's diagnostic state.
 var activeDiagnostics *extractionDiagnostics
 
-// 字段解析正则覆盖压缩 bundle 的各类声明形式。
+// Field-parsing regexes cover the declaration forms found in minified bundles.
 var (
 	noRe                    = regexp.MustCompile(`(?:^|[,{]\s*)no:\s*(\d+)`)
 	nameRe                  = regexp.MustCompile(`(?:^|[,{]\s*)name:\s*["']([^"']+)["']`)
@@ -136,119 +136,119 @@ var (
 	shellStdoutRe           = regexp.MustCompile(`(?s)message\s+ShellStream\s*\{.*?ShellStreamStdout\s+stdout\s*=\s*1\s*;`)
 )
 
-// Field 描述一个待渲染的 protobuf 字段。
+// Field describes a protobuf field to render.
 type Field struct {
-	// No 是字段编号。
+	// No is the field number.
 	No int `json:"no"`
-	// Name 是字段名称。
+	// Name is the field name.
 	Name string `json:"name"`
-	// Kind 是标量、消息、枚举或映射类别。
+	// Kind is the scalar, message, enum, or map kind.
 	Kind string `json:"kind"`
-	// T 保存标量编号或消息引用变量。
+	// T holds a scalar number or a message reference variable.
 	T any `json:"T"`
-	// Oneof 是字段所属的互斥分组。
+	// Oneof is the mutually exclusive group the field belongs to.
 	Oneof string `json:"oneof"`
-	// Repeated 表示字段可以重复。
+	// Repeated marks the field as repeatable.
 	Repeated bool `json:"repeated"`
-	// Opt 表示字段为显式可选。
+	// Opt marks the field as explicitly optional.
 	Opt bool `json:"opt"`
-	// MapKey 是映射键的标量编号。
+	// MapKey is the map key's scalar number.
 	MapKey int `json:"K"`
-	// MapValueKind 是映射值的标量或消息类别。
+	// MapValueKind is the map value's scalar or message kind.
 	MapValueKind string
-	// MapValueT 保存映射值的标量编号或消息引用。
+	// MapValueT holds the map value's scalar number or message reference.
 	MapValueT any
 }
 
-// Message 描述提取出的消息及其源码位置。
+// Message describes an extracted message and its source position.
 type Message struct {
-	// TypeName 是消息的全限定类型名。
+	// TypeName is the message's fully qualified type name.
 	TypeName string
-	// VarName 是 JS 外部变量名。
+	// VarName is the JS outer variable name.
 	VarName string
-	// InternalName 是 JS 内部类名。
+	// InternalName is the JS inner class name.
 	InternalName string
-	// Fields 是消息字段列表。
+	// Fields is the message field list.
 	Fields []Field
-	// Package 是消息所属协议包。
+	// Package is the protocol package the message belongs to.
 	Package string
-	// ShortName 是包内嵌套类型名。
+	// ShortName is the nested type name within the package.
 	ShortName string
-	// Pos 是消息在 bundle 中的字节位置。
+	// Pos is the message's byte position in the bundle.
 	Pos int
-	// ModuleStart 是消息所在模块的起始位置。
+	// ModuleStart is the start position of the module containing the message.
 	ModuleStart int
 }
 
-// Enum 描述提取出的枚举及其源码位置。
+// Enum describes an extracted enum and its source position.
 type Enum struct {
-	// TypeName 是枚举的全限定类型名。
+	// TypeName is the enum's fully qualified type name.
 	TypeName string
-	// VarName 是枚举对应的 JS 变量名。
+	// VarName is the enum's JS variable name.
 	VarName string
-	// Values 是枚举值列表。
+	// Values is the enum value list.
 	Values []EnumValue
-	// Package 是枚举所属协议包。
+	// Package is the protocol package the enum belongs to.
 	Package string
-	// ShortName 是包内嵌套类型名。
+	// ShortName is the nested type name within the package.
 	ShortName string
-	// Pos 是枚举在 bundle 中的字节位置。
+	// Pos is the enum's byte position in the bundle.
 	Pos int
-	// ModuleStart 是枚举所在模块的起始位置。
+	// ModuleStart is the start position of the module containing the enum.
 	ModuleStart int
 }
 
-// EnumValue 描述单个枚举编号和名称。
+// EnumValue describes a single enum number and name.
 type EnumValue struct {
-	// No 是枚举编号。
+	// No is the enum number.
 	No int
-	// Name 是枚举名称。
+	// Name is the enum name.
 	Name string
 }
 
-// Service 描述提取出的服务及其源码位置。
+// Service describes an extracted service and its source position.
 type Service struct {
-	// TypeName 是服务的全限定类型名。
+	// TypeName is the service's fully qualified type name.
 	TypeName string
-	// VarName 是服务对应的 JS 变量名。
+	// VarName is the service's JS variable name.
 	VarName string
-	// Methods 是服务方法列表。
+	// Methods is the service method list.
 	Methods []Method
-	// Package 是服务所属协议包。
+	// Package is the protocol package the service belongs to.
 	Package string
-	// ShortName 是服务包内名称。
+	// ShortName is the service's name within the package.
 	ShortName string
-	// Pos 是服务在 bundle 中的字节位置。
+	// Pos is the service's byte position in the bundle.
 	Pos int
-	// ModuleStart 是服务所在模块的起始位置。
+	// ModuleStart is the start position of the module containing the service.
 	ModuleStart int
 }
 
-// Method 描述一个 RPC 方法的输入、输出和流模式。
+// Method describes an RPC method's input, output, and streaming mode.
 type Method struct {
-	// Name 是 RPC 方法名。
+	// Name is the RPC method name.
 	Name string
-	// InputType 是输入消息引用变量。
+	// InputType is the input message reference variable.
 	InputType string
-	// OutputType 是输出消息引用变量。
+	// OutputType is the output message reference variable.
 	OutputType string
-	// Kind 是一元或不同方向的流式调用类型。
+	// Kind is unary or a directional streaming call type.
 	Kind string
 }
 
-// symbolDef 保存符号对应的类型、类别和模块位置。
+// symbolDef holds a symbol's type, kind, and module position.
 type symbolDef struct {
-	// TypeName 是符号对应的全限定类型名。
+	// TypeName is the symbol's fully qualified type name.
 	TypeName string
-	// Pos 是符号定义位置。
+	// Pos is the symbol definition position.
 	Pos int
-	// Kind 是消息或枚举类别。
+	// Kind is the message or enum kind.
 	Kind string
-	// ModuleStart 是符号所在模块起点。
+	// ModuleStart is the start of the module containing the symbol.
 	ModuleStart int
 }
 
-// TypeResolver 通过局部符号、别名和短名称解析协议类型。
+// TypeResolver resolves protocol types through local symbols, aliases, and short names.
 type TypeResolver struct {
 	bySymbol      map[string][]symbolDef
 	byAlias       map[string][]symbolDef
@@ -256,5 +256,5 @@ type TypeResolver struct {
 	moduleImports map[int]map[string]int
 }
 
-// aliasIndex 按模块和目标符号保存别名集合。
+// aliasIndex stores alias sets keyed by module and target symbol.
 type aliasIndex map[int]map[string][]string

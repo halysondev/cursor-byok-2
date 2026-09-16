@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# extract.sh 从 Cursor 安装目录安全提取 Proto 文件。
+# extract.sh safely extracts proto files from the Cursor install directory.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +29,7 @@ canonicalize_path() {
   printf '%s/%s\n' "$(cd "$parent" && pwd -P)" "$base"
 }
 
-# 文件输入只提取自身；目录输入扫描工作台、扩展宿主和扩展产物。
+# A file input extracts only itself; a directory input scans the workbench, extension host, and extension artifacts.
 INPUT_PATHS=()
 
 add_input() {

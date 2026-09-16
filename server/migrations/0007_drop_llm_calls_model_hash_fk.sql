@@ -1,6 +1,6 @@
--- llm_calls 是历史记录：model_hash 现在既可指向内置 model_configs，
--- 也可携带插件稳定模型 ID（plugin:<plugin>/<provider>/<model>）。
--- 去掉指向 model_configs 的外键；SQLite 不支持删除约束，按整表重建执行。
+-- llm_calls is historical data: model_hash can point at a built-in model_configs row
+-- or carry a plugin stable model ID (plugin:<plugin>/<provider>/<model>).
+-- Drop the foreign key to model_configs; SQLite cannot drop a constraint, so the table is rebuilt.
 PRAGMA defer_foreign_keys = ON;
 
 CREATE TABLE llm_calls_new (

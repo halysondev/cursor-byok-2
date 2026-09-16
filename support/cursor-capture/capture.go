@@ -1,4 +1,4 @@
-// capture.go 在不影响上游转发的前提下截取有限大小的 HTTP 流。
+// capture.go captures bounded-size HTTP streams without affecting upstream forwarding.
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-// captureReadCloser 包装响应体并并发安全地累计诊断副本。
+// captureReadCloser wraps a response body and accumulates a diagnostic copy in a concurrency-safe way.
 type captureReadCloser struct {
 	source    io.ReadCloser
 	mu        sync.Mutex
@@ -21,7 +21,7 @@ type captureReadCloser struct {
 	onDone    func(captured []byte, size int64, truncated bool, readErr error)
 }
 
-// newCaptureReadCloser 创建带分块和完成回调的捕获读取器。
+// newCaptureReadCloser creates a capture reader with chunking and a completion callback.
 func newCaptureReadCloser(
 	source io.ReadCloser,
 	limit int,
@@ -36,7 +36,7 @@ func newCaptureReadCloser(
 	}
 }
 
-// Read 转发读取结果并保存不超过限制的副本。
+// Read forwards read results and keeps a bounded copy.
 func (reader *captureReadCloser) Read(payload []byte) (int, error) {
 	read, err := reader.source.Read(payload)
 	if read > 0 {
@@ -65,14 +65,14 @@ func (reader *captureReadCloser) Read(payload []byte) (int, error) {
 	return read, err
 }
 
-// Close 关闭原始响应体并保证完成回调只执行一次。
+// Close closes the original response body and guarantees the completion callback runs once.
 func (reader *captureReadCloser) Close() error {
 	err := reader.source.Close()
 	reader.finish(err)
 	return err
 }
 
-// finish 固化捕获快照并在锁外调用完成回调。
+// finish finalizes the capture snapshot and calls the completion callback outside the lock.
 func (reader *captureReadCloser) finish(readErr error) {
 	reader.mu.Lock()
 	if reader.done {
@@ -89,7 +89,7 @@ func (reader *captureReadCloser) finish(readErr error) {
 	}
 }
 
-// rawHex 把捕获字节编码为便于 JSON 持久化的十六进制文本。
+// rawHex encodes captured bytes as hex text for JSON persistence.
 func rawHex(payload []byte) string {
 	return hex.EncodeToString(payload)
 }

@@ -695,14 +695,8 @@ async function invoke(
 
 export const antigravityProvider: ProviderSupport = {
   id: "antigravity",
-  displayName: {
-    "en-US": "Google Antigravity",
-    "zh-CN": "Google Antigravity",
-  },
-  description: {
-    "en-US": "Google Antigravity / Gemini model access with hybrid reasoning & agent tools.",
-    "zh-CN": "通过 Google Antigravity / Gemini API 使用混合推理与 Agent 工具。",
-  },
+  displayName: "Google Antigravity",
+  description: "Google Antigravity / Gemini model access with hybrid reasoning & agent tools.",
   providerType: "google",
   resourceType: RESOURCE_TYPE,
   models: antigravityModels,

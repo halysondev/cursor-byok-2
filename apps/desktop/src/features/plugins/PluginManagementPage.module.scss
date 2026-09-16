@@ -108,7 +108,7 @@
 }
 
 
-// 主操作靠左,"更多"推到行尾,两端对齐。
+// Primary action stays left, "more" is pushed to the row end with space-between alignment.
 .moreAction {
   display: flex;
   flex: 0 0 auto;
@@ -151,7 +151,7 @@
   border-radius: 999px;
 }
 
-// 反向斜纹(-45°)+ 无限反向滚动;未知总量时以 100% 宽度作不确定态。
+// Reversed diagonal stripes (-45deg) with infinite reverse scrolling; full width acts as the indeterminate state when the total is unknown.
 .progressFill {
   height: 100%;
   background-color: var(--vscode-progressBar-background, #0e70c0);

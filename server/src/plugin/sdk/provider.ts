@@ -3,25 +3,25 @@ import type { ModelSnapshot, ModelSupport } from "./model.ts";
 import type { ResourcePatch, ResourceSnapshot } from "./resource.ts";
 
 /**
- * LLM 请求契约。宿主把它的规范会话(ProjectedMessage)投影成这个形状;
- * 插件负责把它适配成上游 Provider 的协议。
+ * The LLM request contract. The host projects its canonical conversation (ProjectedMessage)
+ * into this shape; the plugin adapts it to the upstream Provider's protocol.
  */
 export type LlmContentPart =
   | { type: "text"; text: string }
   | { type: "image"; mediaType: string; dataBase64: string };
 
-/** 不透明的 Provider 回放状态(如加密推理项);回放时按 providerKind 过滤。 */
+/** Opaque Provider replay state (e.g. encrypted reasoning items); filtered by providerKind on replay. */
 export type LlmReplayState = {
   providerKind: string;
   value: JsonValue;
 };
 
 export type LlmToolCall = {
-  /** 同一轮内的稳定序号。 */
+  /** Stable sequence number within a single turn. */
   index: number;
   callId: string;
   name: string;
-  /** 已解析的 JSON 参数。 */
+  /** Parsed JSON arguments. */
   arguments: JsonValue;
 };
 
@@ -40,26 +40,26 @@ export type LlmMessage =
     name: string;
     content: string;
     isError: boolean;
-    /** 非空时优先于 content,承载图片等富工具结果。 */
+    /** When non-empty, takes precedence over content and carries rich tool results such as images. */
     parts: LlmContentPart[];
   };
 
 export type LlmTool = {
   name: string;
   description: string;
-  /** 工具参数的 JSON Schema。 */
+  /** JSON Schema for the tool arguments. */
   parameters: JsonValue;
 };
 
 export type LlmRequest = {
-  /** 系统指令;空字符串表示没有。 */
+  /** System instructions; an empty string means none. */
   instructions: string;
   messages: LlmMessage[];
   tools: LlmTool[];
   reasoning: { enabled: boolean; effort: string | null };
   latency: "fast" | "standard";
   maxOutputTokens: number | null;
-  /** 会话级稳定缓存键,用于上游前缀缓存的路由亲和(如 prompt_cache_key)。 */
+  /** Conversation-level stable cache key, used for routing affinity with upstream prefix caches (e.g. prompt_cache_key). */
   cacheKey: string | null;
 };
 
@@ -73,9 +73,11 @@ export type ModelUsage = {
 };
 
 /**
- * 标准化输出契约,与宿主统一流事件一一对应。插件边接收上游数据边发出事件;
- * 文本、思考和每个工具调用都有显式的开始/结束边界,工具参数以增量交付。
- * 回放状态在流结束前发出一次,宿主存入 assistant 消息供下一轮回放。
+ * The normalized output contract, one-to-one with the host's unified stream events. The plugin
+ * emits events as upstream data arrives; text, thinking, and each tool call have explicit
+ * start/end boundaries, and tool arguments are delivered as deltas.
+ * Replay state is emitted once before the stream ends; the host stores it on the assistant
+ * message for replay on the next turn.
  */
 export type ModelEvent =
   | { type: "text-start" }
@@ -97,15 +99,16 @@ export type ProviderOutput = {
 
 export type ProviderInvokeInput = {
   model: ModelSnapshot;
-  /** 宿主为本次调用选中的资源;无资源 Provider 为 null。 */
+  /** The resource the host selected for this call; null for Providers without resources. */
   resource: ResourceSnapshot | null;
   request: LlmRequest;
 };
 
 /**
- * `resource-error` 把失败归因到选中的资源,宿主据此更新资源状态,
- * 并可在尚未发出任何事件时(未来)换一个资源重试。`patch` 同时用于
- * 持久化成功调用的副作用,例如刷新后的 access token。
+ * `resource-error` attributes the failure to the selected resource; the host updates the
+ * resource state accordingly and may (in the future) retry with a different resource when
+ * no events have been emitted yet. `patch` also persists side effects of a successful call,
+ * such as a refreshed access token.
  */
 export type ProviderResult =
   | { status: "completed"; patch?: ResourcePatch }
@@ -116,9 +119,9 @@ export type ProviderSupport = {
   id: string;
   displayName: LocalizedText;
   description?: LocalizedText;
-  /** 产品身份,用于归类与图标,如 "openai"。 */
+  /** Product identity used for grouping and icons, e.g. "openai". */
   providerType: string;
-  /** 每次调用消费的资源类型;无资源 Provider 可省略。 */
+  /** Resource type consumed per call; Providers without resources may omit it. */
   resourceType?: string;
   models?: ModelSupport;
   invoke(

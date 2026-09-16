@@ -13,14 +13,14 @@ export interface ModelPresetEntry {
   max_output_tokens: number | null;
 }
 
-/** 一个服务商在某种协议（anthropic / openai）下的接入端点 */
+/** A provider's connection endpoint for one protocol (anthropic / openai). */
 export interface ModelPresetEndpoint {
   baseUrl: string;
-  /** true 时 baseUrl 即完整请求 URL；false 时由请求协议追加标准端点路径 */
+  /** When true, baseUrl is the complete request URL; when false, the protocol appends its standard endpoint path. */
   useFullUrl: boolean;
-  /** openai 协议的请求端点（useFullUrl 为 true 时忽略） */
+  /** Request endpoint for the openai protocol (ignored when useFullUrl is true). */
   openaiEndpoint: string;
-  /** 非空时启用自定义 Headers（claude-cli 伪装头） */
+  /** When non-empty, enables custom headers (claude-cli impersonation headers). */
   customHeaders: Record<string, string> | null;
 }
 
@@ -29,7 +29,7 @@ export interface ModelPreset {
   name: string;
   icon: string;
   keyHint: string;
-  /** 五家服务商均同时提供 Anthropic 与 OpenAI 兼容协议 */
+  /** All five providers offer both Anthropic- and OpenAI-compatible protocols. */
   endpoints: { anthropic: ModelPresetEndpoint; openai: ModelPresetEndpoint };
   models: ModelPresetEntry[];
 }
@@ -47,19 +47,19 @@ const entry = (
 });
 
 const claudeHeaders = { ...defaultCustomHeaders };
-/** anthropic 协议：填 Base URL，自动追加 /v1/messages */
+/** anthropic protocol: enter the Base URL, /v1/messages is appended automatically. */
 const anthropic = (baseUrl: string): ModelPresetEndpoint => ({ baseUrl, useFullUrl: false, openaiEndpoint: "", customHeaders: claudeHeaders });
-/** openai 协议：填 Base URL，自动追加 /v1/chat/completions */
+/** openai protocol: enter the Base URL, /v1/chat/completions is appended automatically. */
 const openaiChat = (baseUrl: string): ModelPresetEndpoint => ({ baseUrl, useFullUrl: false, openaiEndpoint: "/v1/chat/completions", customHeaders: null });
-/** openai 协议：路径不规则，直接给完整请求 URL */
+/** openai protocol: the path is non-standard, so the full request URL is given directly. */
 const openaiFullUrl = (url: string): ModelPresetEndpoint => ({ baseUrl: url, useFullUrl: true, openaiEndpoint: "/v1/chat/completions", customHeaders: null });
 
 export const modelPresets: ModelPreset[] = [
   {
     key: "zhipu",
-    name: "智谱 GLM",
+    name: "Zhipu GLM",
     icon: zhipuIcon,
-    keyHint: "bigmodel.cn → GLM Coding Plan → API Key（套餐 Key 与普通 Key 不通用）",
+    keyHint: "bigmodel.cn → GLM Coding Plan → API Key (plan keys and regular keys are not interchangeable)",
     endpoints: {
       anthropic: anthropic("https://open.bigmodel.cn/api/anthropic"),
       openai: openaiFullUrl("https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"),
@@ -74,7 +74,7 @@ export const modelPresets: ModelPreset[] = [
     key: "kimi",
     name: "Kimi (Moonshot)",
     icon: kimiIcon,
-    keyHint: "Kimi Code 编程套餐页获取 API Key（api.kimi.com/coding 端点）",
+    keyHint: "Get an API key from the Kimi Code coding plan page (api.kimi.com/coding endpoint)",
     endpoints: {
       anthropic: anthropic("https://api.kimi.com/coding"),
       openai: openaiChat("https://api.kimi.com/coding"),
@@ -100,9 +100,9 @@ export const modelPresets: ModelPreset[] = [
   },
   {
     key: "volcengine",
-    name: "火山引擎方舟",
+    name: "Volcano Engine Ark",
     icon: huoshanIcon,
-    keyHint: "火山方舟 Coding Plan（ark-code-latest 路由多款代码模型）",
+    keyHint: "Volcano Ark Coding Plan (ark-code-latest routes to multiple coding models)",
     endpoints: {
       anthropic: anthropic("https://ark.cn-beijing.volces.com/api/coding"),
       openai: openaiFullUrl("https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions"),
@@ -113,7 +113,7 @@ export const modelPresets: ModelPreset[] = [
     key: "minimax",
     name: "MiniMax",
     icon: minimaxIcon,
-    keyHint: "platform.minimaxi.com → 订阅 Coding Plan → API Key",
+    keyHint: "platform.minimaxi.com → subscribe to a Coding Plan → API Key",
     endpoints: {
       anthropic: anthropic("https://api.minimaxi.com/anthropic"),
       openai: { baseUrl: "https://api.minimaxi.com", useFullUrl: false, openaiEndpoint: "/v1/responses", customHeaders: null },

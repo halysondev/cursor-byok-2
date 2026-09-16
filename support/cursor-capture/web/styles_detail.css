@@ -1,4 +1,4 @@
-/* styles_detail.css 定义请求详情、载荷面板和状态提示布局。 */
+/* styles_detail.css defines the request detail, payload panel, and status notice layouts. */
 .detail-pane {
   display: grid;
   grid-template-rows: 38px minmax(0, 1fr);

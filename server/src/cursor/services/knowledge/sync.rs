@@ -18,8 +18,9 @@ const ADD_PATH: &str = "/aiserver.v1.AiService/KnowledgeBaseAdd";
 const UPDATE_PATH: &str = "/aiserver.v1.AiService/KnowledgeBaseUpdate";
 const REMOVE_PATH: &str = "/aiserver.v1.AiService/KnowledgeBaseRemove";
 
-/// 逐条把离线日志推送到上游。返回 true 表示日志已清空(上游可用),
-/// false 表示上游不可达,剩余日志保留、调用方应降级到本地。
+/// Pushes the offline log upstream entry by entry. Returns true when the log is fully
+/// drained (upstream is reachable); false when upstream is unreachable, in which case the
+/// remaining log is kept and the caller should fall back to local.
 pub async fn replay(
     upstream: &proxy::CursorProxy,
     headers: &HeaderMap,
@@ -38,7 +39,7 @@ pub async fn replay(
     Ok(true)
 }
 
-/// 用上游返回的完整列表覆盖本地镜像。仅应在日志已清空时调用。
+/// Overwrite the local mirror with the complete list returned upstream. Only call once the log has been drained.
 pub fn mirror(store: &RuleStore, items: Vec<KnowledgeBaseListItem>) -> Result<()> {
     let records = items
         .into_iter()
@@ -61,7 +62,7 @@ async fn replay_add(
     id: &str,
 ) -> Result<bool> {
     let Some(record) = store.get(id)? else {
-        // 规则文件已不在(被手动删除等),日志作废。
+        // The rule file no longer exists (deleted by hand, etc.), so the log entry is void.
         store.pop_journal()?;
         return Ok(true);
     };
@@ -149,8 +150,9 @@ async fn replay_remove(
     Ok(true)
 }
 
-/// 以当前请求的头为模板向上游发起一次 unary RPC。
-/// 成功(2xx)返回响应体;不可达或被拒绝返回 None,由调用方保留日志。
+/// Issues one unary RPC upstream using the current request's headers as the template.
+/// Returns the response body on success (2xx); returns None when unreachable or rejected,
+/// and the caller keeps the log.
 async fn send(
     upstream: &proxy::CursorProxy,
     template: &HeaderMap,
@@ -158,7 +160,7 @@ async fn send(
     message: &impl Message,
 ) -> Option<Bytes> {
     let mut headers = template.clone();
-    // 模板里的上游 URL 头指向原始 RPC 路径,必须移除才能命中回放路径。
+    // The upstream URL header in the template points at the original RPC path; it must be removed to hit the replay path.
     headers.remove(proxy::UPSTREAM_URL_HEADER);
     headers.remove(header::CONTENT_LENGTH);
     headers.insert(

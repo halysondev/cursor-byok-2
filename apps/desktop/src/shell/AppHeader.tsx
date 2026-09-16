@@ -31,7 +31,7 @@ export function AppHeader({ platform, nativeDesktop }: AppHeaderProps) {
       {showNativeUi && <>
         <div className={styles.identity} aria-label="Cursor BYOK">
           <img src={appIcon} alt="" />
-          <span>{t("Cursor 助手 v{version}", { version })}</span>
+          <span>{`Cursor Assistant v${version}`}</span>
         </div>
         <WindowControls />
       </>}

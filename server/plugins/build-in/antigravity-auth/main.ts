@@ -7,10 +7,7 @@ export default defineProviderPlugin({
   providers: [antigravityProvider],
   resources: [{
     type: RESOURCE_TYPE,
-    displayName: {
-      "en-US": "Google accounts & API keys",
-      "zh-CN": "Google 账号与 API 密钥",
-    },
+    displayName: "Google accounts & API keys",
     add: [antigravityAuthorizationCodeOAuth],
     import: credentialImport,
     present: presentAccount,

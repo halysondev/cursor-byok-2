@@ -13,9 +13,9 @@ const OPEN_MENU_ID: &str = "tray-open";
 const QUIT_MENU_ID: &str = "tray-quit";
 
 pub fn create(app: &mut App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, OPEN_MENU_ID, "打开 Cursor BYOK", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, OPEN_MENU_ID, "Open Cursor BYOK", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, QUIT_MENU_ID, "退出", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, QUIT_MENU_ID, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &separator, &quit])?;
 
     TrayIconBuilder::with_id("main")

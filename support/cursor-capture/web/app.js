@@ -1,5 +1,4 @@
-// app.js 管理协议调试器列表筛选、详情编辑器和实时事件交互。
-import { getLocale, setLocale, t, translateDocument } from "./i18n.js";
+// app.js manages the protocol debugger's list filters, detail editors, and live-event interactions.
 import { bindEvents, renderPauseState } from "./app_events.js";
 import { escapeHTML, formatBytes, formatDuration, formatHex, formatState, renderDecodeError, renderTruncated } from "./view_helpers.js";
 const monacoReady = loadMonaco();
@@ -23,7 +22,7 @@ const state = {
   sortOrder: "desc",
   paused: false,
   pendingRefresh: false,
-  connection: { connected: false, key: "status.connecting", values: {} },
+  connection: { connected: false, label: "Connecting" },
   tabs: {
     request: "body",
     response: "body",
@@ -53,7 +52,6 @@ const elements = {
   responseContent: document.querySelector("#response-content"),
   pauseButton: document.querySelector("#pause-button"),
   clearButton: document.querySelector("#clear-button"),
-  localeSelect: document.querySelector("#locale-select"),
   workspace: document.querySelector("#workspace"),
   splitter: document.querySelector("#horizontal-splitter"),
 };
@@ -97,7 +95,7 @@ async function refreshList() {
 
 function renderConversationOptions() {
   const selected = state.conversationId;
-  const options = [`<option value="">${escapeHTML(t("filters.allConversations"))}</option>`];
+  const options = [`<option value="">All conversations</option>`];
   for (const conversation of state.conversations) {
     if (!conversation.conversationId) continue;
     const label = `${conversation.conversationId} (${conversation.exchangeCount})`;
@@ -134,34 +132,34 @@ function scheduleRefresh() {
     try {
       await refreshList();
     } catch (error) {
-      setConnectionState(false, "connection.refreshFailed", { message: error.message });
+      setConnectionState(false, `Refresh failed: ${error.message}`);
     }
   }, 90);
 }
 
 function connectEvents() {
   const events = new EventSource("api/events");
-  events.addEventListener("open", () => setConnectionState(true, "connection.live"));
+  events.addEventListener("open", () => setConnectionState(true, "Live connection"));
   events.addEventListener("update", scheduleRefresh);
-  events.addEventListener("error", () => setConnectionState(false, "connection.retrying"));
+  events.addEventListener("error", () => setConnectionState(false, "Reconnecting live updates"));
 }
 
-function setConnectionState(connected, key, values = {}) {
-  state.connection = { connected, key, values };
+function setConnectionState(connected, label) {
+  state.connection = { connected, label };
   renderConnectionState();
 }
 
 function renderRuntimeStatus() {
   if (!state.status) {
-    elements.statusText.textContent = t("status.connecting");
+    elements.statusText.textContent = "Connecting";
     return;
   }
-  elements.statusText.textContent = t(state.status.running ? "status.running" : "status.stopped");
+  elements.statusText.textContent = state.status.running ? "Service running" : "Service stopped";
 }
 
 function renderConnectionState() {
-  const { connected, key, values } = state.connection;
-  elements.connectionLabel.textContent = t(key, values);
+  const { connected, label } = state.connection;
+  elements.connectionLabel.textContent = label;
   elements.statusDot.classList.toggle("online", connected && Boolean(state.status?.running));
 }
 
@@ -198,17 +196,17 @@ function renderBidiMessageFilter() {
     .map((item) => item.requestKind);
   const kinds = [...new Set([...availableKinds, ...state.bidiMessageKinds])].sort((left, right) => left.localeCompare(right));
   elements.bidiMessageFilter.querySelector("summary").textContent = state.bidiMessageKinds.size
-    ? t("filters.selectedMessageTypes", { count: state.bidiMessageKinds.size })
-    : t("filters.allMessageTypes");
+    ? `${state.bidiMessageKinds.size} message types`
+    : "All message types";
   elements.bidiMessageOptions.innerHTML = [
-    `<label class="multi-select-option all-option"><input type="checkbox" value=""${state.bidiMessageKinds.size === 0 ? " checked" : ""}><span>${escapeHTML(t("filters.allMessageTypes"))}</span></label>`,
+    `<label class="multi-select-option all-option"><input type="checkbox" value=""${state.bidiMessageKinds.size === 0 ? " checked" : ""}><span>${escapeHTML("All message types")}</span></label>`,
     ...kinds.map((kind) => `<label class="multi-select-option"><input type="checkbox" value="${escapeHTML(kind)}"${state.bidiMessageKinds.has(kind) ? " checked" : ""}><span title="${escapeHTML(kind)}">${escapeHTML(kind)}</span></label>`),
   ].join("");
 }
 
 function renderList() {
   const exchanges = filteredExchanges();
-  elements.requestCount.textContent = t("count.requests", { count: exchanges.length });
+  elements.requestCount.textContent = `${exchanges.length} requests`;
   elements.emptyState.classList.toggle("hidden", exchanges.length > 0);
   const groups = new Map();
   for (const item of exchanges) {
@@ -218,8 +216,8 @@ function renderList() {
   }
   elements.requestList.innerHTML = [...groups.entries()]
     .map(([conversationID, items]) => {
-      const label = conversationID || t("groups.unassigned");
-      const header = `<tr class="conversation-group"><td colspan="9"><span>${escapeHTML(t("groups.conversation"))}</span><code title="${escapeHTML(label)}">${escapeHTML(label)}</code><strong>${items.length}</strong></td></tr>`;
+      const label = conversationID || "Unassigned";
+      const header = `<tr class="conversation-group"><td colspan="9"><span>${escapeHTML("Conversation")}</span><code title="${escapeHTML(label)}">${escapeHTML(label)}</code><strong>${items.length}</strong></td></tr>`;
       const rows = items.map((item) => {
       const selected = item.id === state.selectedId ? " selected" : "";
       const statusClass = item.status >= 400 ? "error" : item.status ? "success" : "";
@@ -250,18 +248,18 @@ function renderTrafficSummary() {
     },
     { up: 0, down: 0 },
   );
-  elements.trafficSummary.textContent = `↑ ${formatBytes(totals.up)}　↓ ${formatBytes(totals.down)}`;
+  elements.trafficSummary.textContent = `↑ ${formatBytes(totals.up)} ↓ ${formatBytes(totals.down)}`;
 }
 
 function renderDetail() {
   if (!state.selected) {
     disposeEditor("request");
     disposeEditor("response");
-    elements.selectionSummary.innerHTML = `<span class="method-badge">POST</span><span class="status-badge">${escapeHTML(t("selection.waiting"))}</span><code>${escapeHTML(t("selection.prompt"))}</code>`;
+    elements.selectionSummary.innerHTML = `<span class="method-badge">POST</span><span class="status-badge">${escapeHTML("No selection")}</span><code>${escapeHTML("Select a request to inspect its details")}</code>`;
     elements.requestContent.classList.remove("editor-active");
     elements.responseContent.classList.remove("editor-active");
-    elements.requestContent.innerHTML = `<div class="notice">${escapeHTML(t("notices.noRequest"))}</div>`;
-    elements.responseContent.innerHTML = `<div class="notice">${escapeHTML(t("notices.noResponse"))}</div>`;
+    elements.requestContent.innerHTML = `<div class="notice">${escapeHTML("No request content")}</div>`;
+    elements.responseContent.innerHTML = `<div class="notice">${escapeHTML("No response content")}</div>`;
     return;
   }
   const item = state.selected;
@@ -283,7 +281,7 @@ function renderDetailError(error) {
 function renderPayload(side, payload, tab) {
   const container = elements[`${side}Content`];
   if (!payload) {
-    renderStaticPayload(side, `<div class="notice">${escapeHTML(t("notices.noContent"))}</div>`);
+    renderStaticPayload(side, `<div class="notice">${escapeHTML("No content")}</div>`);
     return;
   }
   if (tab === "headers") {
@@ -292,7 +290,7 @@ function renderPayload(side, payload, tab) {
   }
   if (tab === "raw") {
     if (!payload.rawHex) {
-      renderStaticPayload(side, `<div class="notice">${escapeHTML(t("notices.noRaw"))}</div>`);
+      renderStaticPayload(side, `<div class="notice">${escapeHTML("No raw data")}</div>`);
       return;
     }
     renderEditorPayload(side, formatHex(payload.rawHex), "plaintext", renderTruncated(payload.rawTruncated));
@@ -301,7 +299,7 @@ function renderPayload(side, payload, tab) {
   if (tab === "frames") {
     const document = frameEditorDocument(payload.frames);
     if (!document) {
-      renderStaticPayload(side, `<div class="notice">${escapeHTML(t("notices.noFrames"))}</div>`);
+      renderStaticPayload(side, `<div class="notice">${escapeHTML("No complete frames received yet")}</div>`);
       return;
     }
     renderEditorPayload(side, document, "json", "");
@@ -320,12 +318,12 @@ function renderPayload(side, payload, tab) {
     return;
   }
   container.classList.remove("editor-active");
-  renderStaticPayload(side, `<div class="notice">${escapeHTML(t("notices.noBody"))}</div>`);
+  renderStaticPayload(side, `<div class="notice">${escapeHTML("No body available")}</div>`);
 }
 
 function renderHeaders(headers = []) {
   const items = Array.isArray(headers) ? headers : [];
-  if (!items.length) return `<div class="notice">${escapeHTML(t("notices.noHeaders"))}</div>`;
+  if (!items.length) return `<div class="notice">${escapeHTML("No headers")}</div>`;
   return `<table class="headers-table"><tbody>${items
     .map((header) => `<tr><th>${escapeHTML(header.name)}</th><td>${escapeHTML(header.value)}</td></tr>`)
     .join("")}</tbody></table>`;
@@ -345,7 +343,7 @@ function frameEditorDocument(frames = []) {
     }
     return {
       index: frame.index,
-      kind: frame.kind || frame.messageType || t("notices.unknown"),
+      kind: frame.kind || frame.messageType || "Unknown",
       messageType: frame.messageType || undefined,
       flags: `0x${Number(frame.flags || 0).toString(16).padStart(2, "0")}`,
       length: frame.length,
@@ -424,7 +422,7 @@ async function createEditor(side, host, value, language) {
     slot.model = model;
     slot.host = host;
   } catch {
-    // Monaco 初始化失败时保留文本回退视图。
+    // Keep the text fallback view if Monaco fails to initialize.
   }
 }
 
@@ -462,9 +460,7 @@ function loadMonaco() {
   });
 }
 
-function applyLocale() {
-  translateDocument();
-  elements.localeSelect.value = getLocale();
+function renderAll() {
   renderRuntimeStatus();
   renderConnectionState();
   renderPauseState(state, elements);
@@ -484,16 +480,15 @@ bindEvents({
   renderDetail,
   renderBidiMessageFilter,
   setConnectionState,
-  applyLocale,
 });
 async function bootstrap() {
-  applyLocale();
+  renderAll();
   renderDetail();
   try {
     await Promise.all([loadStatus(), refreshList()]);
     connectEvents();
   } catch (error) {
-    setConnectionState(false, "connection.connectFailed", { message: error.message });
+    setConnectionState(false, `Connection failed: ${error.message}`);
   }
 }
 

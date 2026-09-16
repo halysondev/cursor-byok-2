@@ -11,7 +11,7 @@ import { type AccountData, accountData, quotaExhaustedPatch, RESOURCE_TYPE } fro
 
 const CHAT_URL = "https://api.x.ai/v1/chat/completions";
 
-/** 流内错误只有文本可用,按积分/额度关键词分类。 */
+/** Only text is available for mid-stream errors; they are classified by credit/quota keywords. */
 export function isQuotaError(error: string): boolean {
   const message = error.toLowerCase();
   return message.includes("insufficient_quota") ||
@@ -23,14 +23,14 @@ export function isQuotaError(error: string): boolean {
         message.includes("insufficient")));
 }
 
-/** HTTP 失败携带结构化状态码,429 一律按额度耗尽处理并冷却账号。 */
+/** HTTP failures carry a structured status code; a 429 is always treated as quota exhaustion and cools the account. */
 function isQuotaHttpError(error: HttpError): boolean {
   if (error.status === 429) return true;
   const body = error.body.toLowerCase();
   return body.includes("insufficient_quota") ||
     body.includes("credits exhausted") ||
     body.includes("out of credits") ||
-    // 免费账号触达消费上限时返回 403 spending-limit,属于额度而非授权问题。
+    // A free account that hits its spending limit gets a 403 spending-limit — a quota issue, not an authorization one.
     body.includes("spending-limit") ||
     body.includes("run out of credits") ||
     body.includes("quota_exceeded");
@@ -64,7 +64,7 @@ async function invoke(
       {
         url: CHAT_URL,
         model: input.model.id,
-        // xAI 不接受 reasoning_effort 与 service_tier;思考由模型自身决定。
+        // xAI rejects reasoning_effort and service_tier; thinking is decided by the model itself.
         request: {
           ...input.request,
           reasoning: { enabled: false, effort: null },
@@ -101,10 +101,7 @@ async function invoke(
 export const grokProvider: ProviderSupport = {
   id: "grok",
   displayName: "xAI Grok",
-  description: {
-    "en-US": "SuperGrok subscription access through the official Grok CLI endpoint.",
-    "zh-CN": "通过官方 Grok CLI 接口使用 SuperGrok 订阅。",
-  },
+  description: "SuperGrok subscription access through the official Grok CLI endpoint.",
   providerType: "xai",
   resourceType: RESOURCE_TYPE,
   models: grokModels,

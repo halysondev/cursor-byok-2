@@ -57,7 +57,7 @@ impl IntoResponse for Error {
             | Self::Encode(_)
             | Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        // 所有回给 UI 的错误统一落日志,否则失败原因只出现在前端提示里。
+        // Log every error returned to the UI; otherwise the failure reason only ever appears in a frontend toast.
         tracing::warn!(%status, error = %self, "request failed");
         let code = match status {
             StatusCode::BAD_REQUEST => "invalid_argument",

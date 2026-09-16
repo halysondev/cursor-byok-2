@@ -87,7 +87,7 @@ export function parseOfficialModels(body: unknown): ModelDefinition[] {
       root?.primary_model ??
       root?.primaryModel,
   );
-  // 把上游默认模型排在最前,让宿主自然选中它。
+  // Put the upstream default model first so the host naturally selects it.
   if (defaultModel) {
     models.sort((left, right) =>
       Number(right.id === defaultModel) - Number(left.id === defaultModel)

@@ -146,9 +146,10 @@ async fn decode_part<T: Message + Default>(
         .map_err(|error| Error::Protocol(format!("invalid {name} context Blob: {error}")))
 }
 
-/// 把本地 md 规则目录(rules 服务的存储)合并进请求上下文,
-/// 使 BYOK 运行在 IDE 未携带这些规则时也能消费它们。
-/// 与 IDE 已发规则按内容去重;读取失败只告警,不影响运行。
+/// Merges the local md rules directory (the rules service's storage) into the request
+/// context so BYOK runs can consume those rules even when the IDE did not send them.
+/// Content-deduplicated against rules the IDE already sent; a read failure only warns
+/// and never affects the run.
 pub fn merge_local_rules(context: &mut pb::RequestContext, rules_dir: &Path) {
     let records = match crate::cursor::services::knowledge::RuleStore::open(rules_dir.into())
         .and_then(|store| store.list())

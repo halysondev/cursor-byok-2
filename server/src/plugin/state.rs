@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use super::data::PluginDataStore;
 use crate::{Error, Result};
 
-/// 核心理解的资源运行状态;插件只能通过 draft/patch/report 改变它。
+/// The resource runtime state as the core understands it; plugins can only change it via draft/patch/report.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ResourceState {
@@ -22,7 +22,7 @@ pub enum ResourceState {
 }
 
 impl ResourceState {
-    /// 冷却到期后自动恢复可用。
+    /// Automatically becomes usable again once the cooldown expires.
     pub fn is_ready(&self, now_ms: i64) -> bool {
         match self {
             Self::Ready => true,
@@ -32,7 +32,7 @@ impl ResourceState {
     }
 }
 
-/// 核心持久化的一条插件资源。`private_data` 只回传给插件。
+/// A plugin resource persisted by the core. `private_data` is only ever handed back to the plugin.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ResourceRecord {
     pub id: String,
@@ -44,7 +44,7 @@ pub struct ResourceRecord {
 }
 
 impl ResourceRecord {
-    /// 传给插件的快照形状(SDK 的 ResourceSnapshot)。
+    /// The snapshot shape passed to the plugin (the SDK's ResourceSnapshot).
     pub fn snapshot(&self, resource_type: &str) -> serde_json::Value {
         serde_json::json!({
             "id": self.id,
@@ -74,7 +74,7 @@ fn state_json(state: &ResourceState) -> serde_json::Value {
     }
 }
 
-/// 插件返回的新资源(SDK 的 ResourceDraft)。
+/// A new resource returned by the plugin (the SDK's ResourceDraft).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResourceDraft {
@@ -84,7 +84,7 @@ pub struct ResourceDraft {
     pub state: Option<ResourceStateInput>,
 }
 
-/// 插件对单条资源的部分更新(SDK 的 ResourcePatch)。
+/// A partial update the plugin makes to a resource (the SDK's ResourcePatch).
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResourcePatch {
@@ -94,7 +94,7 @@ pub struct ResourcePatch {
     pub state: Option<ResourceStateInput>,
 }
 
-/// SDK 侧 camelCase 状态输入,转换成核心存储形状。
+/// Converts the SDK-side camelCase state input into the core storage shape.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ResourceStateInput {
@@ -127,7 +127,7 @@ impl From<ResourceStateInput> for ResourceState {
     }
 }
 
-/// 插件发现的一个模型(SDK 的 ModelDefinition),由核心整体替换目录。
+/// A model discovered by the plugin (the SDK's ModelDefinition); the core replaces the catalog wholesale with them.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StoredModel {
     pub id: String,
@@ -193,7 +193,7 @@ impl StoredModel {
         })
     }
 
-    /// 传给插件的模型快照(SDK 的 ModelSnapshot)。
+    /// The model snapshot passed to the plugin (the SDK's ModelSnapshot).
     pub fn snapshot(&self) -> serde_json::Value {
         serde_json::json!({
             "id": self.id,
@@ -206,7 +206,7 @@ impl StoredModel {
     }
 }
 
-/// 资源与模型目录的核心存储,构建在插件私有 JSON 文件之上。
+/// Core storage for resources and model catalogs, built on top of plugin-private JSON files.
 #[derive(Clone)]
 pub struct PluginStateStore {
     data: PluginDataStore,

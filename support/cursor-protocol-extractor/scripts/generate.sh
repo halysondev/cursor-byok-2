@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# generate.sh 根据提取的 Proto 定义生成可供其他 Go module 使用的消息包。
+# generate.sh generates message packages usable by other Go modules from the extracted proto definitions.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

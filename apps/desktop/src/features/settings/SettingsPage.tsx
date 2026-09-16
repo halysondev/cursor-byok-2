@@ -13,7 +13,6 @@ import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { Select } from "../../shared/ui/Select";
 import { TitledCard } from "../../shared/ui/TitledCard";
-import { setLocalePreference, useI18n, type LocalePreference } from "../../i18n/store";
 import { useMessage } from "../../shared/ui/message";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { themeOptions } from "../../shared/theme/theme";
@@ -21,7 +20,6 @@ import styles from "./SettingsPage.module.scss";
 
 export function SettingsPage() {
   const { detailed, ports, theme } = useAppStore();
-  const { preference, locale } = useI18n();
   const message = useMessage();
   const [proxyPort, setProxyPort] = useState(String(ports.proxy_port));
   const [servicePort, setServicePort] = useState(String(ports.service_port));
@@ -56,20 +54,20 @@ export function SettingsPage() {
   const parsePort = (value: string, label: string) => {
     const port = Number(value);
     if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-      throw new Error(`${label}${t("必须是 0–65535 之间的整数")}`);
+      throw new Error(`${label}${" must be an integer from 0 to 65535"}`);
     }
     return port;
   };
   const savePorts = async () => {
     try {
       const next = {
-        proxy_port: parsePort(proxyPort, t("代理端口")),
-        service_port: parsePort(servicePort, t("服务端口")),
+        proxy_port: parsePort(proxyPort, "Proxy port"),
+        service_port: parsePort(servicePort, "Service port"),
       };
       setSavingPorts(true);
       if (await appStore.updatePorts(next)) {
         setEditingPorts(false);
-        message(t("端口设置已保存，重启软件后生效"), { duration: 4_000 });
+        message("Port settings saved. Restart the app to apply them.", { duration: 4_000 });
       }
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
@@ -93,7 +91,7 @@ export function SettingsPage() {
       setStorage(await api.clearStatisticsStorage(clearScope));
       setConfirmClear(false);
       await appStore.refresh();
-      message(clearScope === "all" ? t("全部统计数据已清理") : t("详细记录已清理"));
+      message(clearScope === "all" ? "All statistics cleared" : "Detailed records cleared");
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -118,7 +116,7 @@ export function SettingsPage() {
       setOutboundProxy(saved);
       setProxyDraft({ mode: saved.mode, address: saved.address, auth_enabled: saved.auth_enabled, username: saved.username, password: "" });
       setEditingProxy(false);
-      message(t("代理设置已保存"));
+      message("Proxy settings saved");
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -136,13 +134,13 @@ export function SettingsPage() {
   };
   const saveTab = async () => {
     try {
-      if (tabDraft.mode === "custom" && !tabDraft.address.trim()) throw new Error(t("TAB 服务地址不能为空"));
+      if (tabDraft.mode === "custom" && !tabDraft.address.trim()) throw new Error("TAB service address is required");
       setSavingTab(true);
       const saved = await api.setTabSettings({ ...tabDraft, address: tabDraft.address.trim() });
       setTabSettings(saved);
       setTabDraft(saved);
       setEditingTab(false);
-      message(t("TAB 设置已保存"));
+      message("TAB settings saved");
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -157,40 +155,40 @@ export function SettingsPage() {
     while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
     return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
   };
-  const clearTitle = clearScope === "all" ? t("确定要清理全部统计数据吗？") : t("确定要清理详细记录吗？");
+  const clearTitle = clearScope === "all" ? "Clear all statistics?" : "Clear detailed records?";
   const clearDescription = clearScope === "all"
-    ? t("所有调用汇总、详细内容和追踪记录都会被删除。模型配置、CA 和应用设置不会受到影响，此操作无法撤销。")
-    : t("仅删除请求、响应和追踪附件等详细内容，保留调用汇总、统计指标和配置。");
+    ? "All call summaries, detailed content, and trace records will be deleted. Model configuration, CA, and application settings are unaffected. This action cannot be undone."
+    : "Only request, response, and trace attachments are deleted; call summaries, metrics, and configuration are kept.";
   const content = (
     <div className={styles.page}>
-      <TitledCard title={t("调用观测")}>
+      <TitledCard title={"Call observability"}>
         <div className={styles.settingRow}>
           <div>
-            <strong>{t("详细模式")}</strong>
+            <strong>{"Detailed mode"}</strong>
             <small>
-              {t("额外保存完整请求和流响应；默认只保存时间、状态与用量。")}
+              {"Also store complete requests and streamed responses; by default only timing, status, and usage are stored."}
             </small>
           </div>
           <Checkbox
-            label={t("详细模式")}
+            label={"Detailed mode"}
             checked={detailed}
             onChange={(checked) => void appStore.updateDetailed(checked)}
           />
         </div>
       </TitledCard>
-      <TitledCard title={t("端口设置")} action={editingPorts ? (
+      <TitledCard title={"Port settings"} action={editingPorts ? (
         <div className={styles.cardActions}>
-          <Button size="small" disabled={savingPorts} onClick={cancelPortEdit}>{t("取消")}</Button>
-          <Button variant="primary" size="small" disabled={savingPorts} onClick={() => void savePorts()}>{savingPorts ? t("保存中…") : t("保存")}</Button>
+          <Button size="small" disabled={savingPorts} onClick={cancelPortEdit}>{"Cancel"}</Button>
+          <Button variant="primary" size="small" disabled={savingPorts} onClick={() => void savePorts()}>{savingPorts ? "Saving…" : "Save"}</Button>
         </div>
       ) : (
-        <button type="button" className={styles.textButton} onClick={editPorts}>{t("编辑")}</button>
+        <button type="button" className={styles.textButton} onClick={editPorts}>{"Edit"}</button>
       )}>
         <div className={styles.portSettings}>
           <div className={styles.portFields}>
             {editingPorts ? <><FormField
-              label={t("代理端口")}
-              hint={t("Cursor 使用的本地代理端口；填写 0 时启动时随机选择。")}
+              label={"Proxy port"}
+              hint={"The local proxy port used by Cursor. Enter 0 to select a random port at startup."}
             >
               <TextInput
                 type="number"
@@ -202,10 +200,8 @@ export function SettingsPage() {
               />
             </FormField>
             <FormField
-              label={t("服务端口")}
-              hint={t(
-                "桌面前端连接的本地管理服务端口；填写 0 时启动时随机选择。",
-              )}
+              label={"Service port"}
+              hint={"The local management service port used by the desktop frontend. Enter 0 to select a random port at startup."}
             >
               <TextInput
                 type="number"
@@ -216,15 +212,13 @@ export function SettingsPage() {
                 onChange={(event) => setServicePort(event.target.value)}
               />
             </FormField></> : <>
-              <div className={styles.portValue}><strong>{t("代理端口")}</strong><span>{ports.proxy_port}</span></div>
-              <div className={styles.portValue}><strong>{t("服务端口")}</strong><span>{ports.service_port}</span></div>
+              <div className={styles.portValue}><strong>{"Proxy port"}</strong><span>{ports.proxy_port}</span></div>
+              <div className={styles.portValue}><strong>{"Service port"}</strong><span>{ports.service_port}</span></div>
             </>}
           </div>
           <div className={styles.portFooter}>
             <small>
-              {t(
-                "端口被占用时会自动选择新的随机端口并保存。修改后需要重启软件才会生效。",
-              )}
+              {"If a port is occupied, a new random port is selected and saved automatically. Restart the app after changing these settings."}
             </small>
           </div>
         </div>
@@ -234,39 +228,18 @@ export function SettingsPage() {
       <CommitSettingsCard />
       <PricingSettingsCard />
       <AppLifecycleSettingsCard />
-      <LegacyModelImport>{({ busy, previewing, open }) => <TitledCard title={t("导入")}>
+      <LegacyModelImport>{({ busy, previewing, open }) => <TitledCard title={"Import"}>
         <div className={styles.importRow}>
           <div>
-            <strong>{t("旧版配置")}</strong>
-            <small>{t("从本机旧版配置读取模型；确认前会显示新增和已存在的模型。")}</small>
+            <strong>{"Legacy configuration"}</strong>
+            <small>{"Read models from the local legacy configuration. New and existing models are shown before confirmation."}</small>
           </div>
           <Button size="small" disabled={busy} onClick={open}>
-            {previewing ? t("读取中…") : t("查看并导入")}
+            {previewing ? "Reading…" : "Review and import"}
           </Button>
         </div>
       </TitledCard>}</LegacyModelImport>
-      <TitledCard title={t("语言")}>
-        <div className={styles.settingRow}>
-          <div>
-            <strong>{t("界面语言")}</strong>
-            <small>{t("默认跟随操作系统；不支持的系统语言使用英文。当前：{language}", { language: locale === "zh-CN" ? "简体中文" : locale === "pt-BR" ? "Português (Brasil)" : "English" })}</small>
-          </div>
-          <div className={styles.languageControl}>
-            <Select
-              value={preference}
-              ariaLabel={t("界面语言")}
-              options={[
-                { value: "system", label: t("跟随系统") },
-                { value: "zh-CN", label: "简体中文" },
-                { value: "en-US", label: "English" },
-                { value: "pt-BR", label: "Português (Brasil)" },
-              ]}
-              onChange={(value) => setLocalePreference(value as LocalePreference)}
-            />
-          </div>
-        </div>
-      </TitledCard>
-      <TitledCard title={t("主题")}>
+      <TitledCard title={"Theme"}>
         <div className={styles.themeActions}>
           {themeOptions.map(({ id }) => (
             <button
@@ -274,23 +247,23 @@ export function SettingsPage() {
               key={id}
               onClick={() => appStore.selectTheme(id)}
             >
-              {id === "default-dark" ? t("默认暗色") : t("默认亮色")}
+              {id === "default-dark" ? "Default dark" : "Default light"}
             </button>
           ))}
         </div>
       </TitledCard>
-      <TitledCard title={t("存储管理")}>
+      <TitledCard title={"Storage management"}>
         <div className={styles.storageRow}>
           <div>
-            <strong>{t("统计数据")}</strong>
-            <small>{storage ? formatBytes(storage.bytes) : t("计算中…")}</small>
+            <strong>{"Statistics"}</strong>
+            <small>{storage ? formatBytes(storage.bytes) : "Calculating…"}</small>
           </div>
           <button
             type="button"
             className={styles.textButton}
             onClick={() => { setClearScope("details"); setConfirmClear(true); }}
           >
-            {t("清理存储空间")}
+            {"Clear storage"}
           </button>
         </div>
       </TitledCard>
@@ -298,18 +271,18 @@ export function SettingsPage() {
         open={confirmClear}
         title={clearTitle}
         busy={clearing}
-        cancelLabel={t("取消")}
-        confirmLabel={t("确认清理")}
+        cancelLabel={"Cancel"}
+        confirmLabel={"Confirm clear"}
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => void clearStorage()}
       >
         <div className={styles.confirmContent}>
           <Select
             value={clearScope}
-            ariaLabel={t("清理范围")}
+            ariaLabel={"Clear scope"}
             options={[
-              { value: "details", label: t("仅清理详细记录") },
-              { value: "all", label: t("清理全部统计数据") },
+              { value: "details", label: "Only clear detailed records" },
+              { value: "all", label: "Clear all statistics" },
             ]}
             onChange={(value) => setClearScope(value as StatisticsStorageScope)}
           />
@@ -318,5 +291,5 @@ export function SettingsPage() {
       </ConfirmDialog>
     </div>
   );
-  return <PageContent title={t("设置")} sections={[{ key: "settings", estimatedHeight: 1200, content }]} />;
+  return <PageContent title={"Settings"} sections={[{ key: "settings", estimatedHeight: 1200, content }]} />;
 }

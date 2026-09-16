@@ -1,4 +1,4 @@
-// decode.go 解析 Connect 帧、压缩载荷和 Cursor protobuf 消息视图。
+// decode.go parses Connect frames, compressed payloads, and Cursor protobuf message views.
 package main
 
 import (
@@ -16,10 +16,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// maxConnectFrameBytes 防止异常帧长度导致调试器分配过大内存。
+// maxConnectFrameBytes prevents anomalous frame lengths from making the debugger allocate excessive memory.
 const maxConnectFrameBytes = 64 << 20
 
-// 协议路径常量用于选择精确的 protobuf 请求、响应和流式消息类型。
+// Protocol path constants select the exact protobuf request, response, and streaming message types.
 const (
 	bidiAppendPath              = "/aiserver.v1.BidiService/BidiAppend"
 	forkBackgroundComposerPath  = "/aiserver.v1.BackgroundComposerService/ForkBackgroundComposer"
@@ -34,7 +34,7 @@ const (
 	runSSEPath                  = "/agent.v1.AgentService/RunSSE"
 )
 
-// connectFrameDecoder 在任意读取边界下累计并解析 Connect 五字节帧。
+// connectFrameDecoder accumulates and parses Connect five-byte frames across arbitrary read boundaries.
 type connectFrameDecoder struct {
 	buffer      []byte
 	messageType string
@@ -44,7 +44,7 @@ type connectFrameDecoder struct {
 	onFrame     func(FrameView)
 }
 
-// newConnectFrameDecoder 创建指定 protobuf 类型的流式解码器。
+// newConnectFrameDecoder creates a streaming decoder for a given protobuf type.
 func newConnectFrameDecoder(messageType string, codec string, maxFrames int, onFrame func(FrameView)) *connectFrameDecoder {
 	return &connectFrameDecoder{
 		messageType: messageType,
@@ -54,7 +54,7 @@ func newConnectFrameDecoder(messageType string, codec string, maxFrames int, onF
 	}
 }
 
-// Write 追加任意长度的网络片段并尽可能产出完整帧。
+// Write appends network chunks of any length and emits complete frames when possible.
 func (decoder *connectFrameDecoder) Write(payload []byte) {
 	if len(payload) == 0 || decoder.frameCount >= decoder.maxFrames {
 		return
@@ -64,7 +64,7 @@ func (decoder *connectFrameDecoder) Write(payload []byte) {
 		flags := decoder.buffer[0]
 		length := int(binary.BigEndian.Uint32(decoder.buffer[1:5]))
 		if length < 0 || length > maxConnectFrameBytes {
-			decoder.emit(FrameView{Flags: flags, Length: length, Error: "Connect 帧长度异常"})
+			decoder.emit(FrameView{Flags: flags, Length: length, Error: "invalid Connect frame length"})
 			decoder.buffer = nil
 			return
 		}
@@ -77,19 +77,19 @@ func (decoder *connectFrameDecoder) Write(payload []byte) {
 	}
 }
 
-// Close 标记流结束并暴露尚未完整的尾部错误。
+// Close marks the stream end and surfaces an incomplete trailing-frame error.
 func (decoder *connectFrameDecoder) Close() {
 	if len(decoder.buffer) > 0 && decoder.frameCount < decoder.maxFrames {
 		decoder.emit(FrameView{
 			Length: len(decoder.buffer),
 			RawHex: clippedHex(decoder.buffer, 4096),
-			Error:  "流结束时仍有不完整的 Connect 帧",
+			Error:  "incomplete Connect frame at stream end",
 		})
 	}
 	decoder.buffer = nil
 }
 
-// emit 在达到帧数上限前调用帧回调。
+// emit calls the frame callback until the frame limit is reached.
 func (decoder *connectFrameDecoder) emit(frame FrameView) {
 	frame.Index = decoder.frameCount
 	decoder.frameCount++
@@ -98,7 +98,7 @@ func (decoder *connectFrameDecoder) emit(frame FrameView) {
 	}
 }
 
-// decode 解压并解析单条 Connect 帧。
+// decode decompresses and parses a single Connect frame.
 func (decoder *connectFrameDecoder) decode(flags uint8, payload []byte) FrameView {
 	frame := FrameView{
 		Flags:      flags,
@@ -125,11 +125,11 @@ func (decoder *connectFrameDecoder) decode(flags uint8, payload []byte) FrameVie
 
 	message := newMessage(decoder.messageType)
 	if message == nil {
-		frame.Error = "未知的 protobuf 消息类型"
+		frame.Error = "unknown protobuf message type"
 		return frame
 	}
 	if err := proto.Unmarshal(decoded, message); err != nil {
-		frame.Error = fmt.Sprintf("protobuf 解码失败：%v", err)
+		frame.Error = fmt.Sprintf("protobuf decode failed: %v", err)
 		return frame
 	}
 	frame.MessageType = decoder.messageType
@@ -141,27 +141,27 @@ func (decoder *connectFrameDecoder) decode(flags uint8, payload []byte) FrameVie
 	return frame
 }
 
-// decompressPayload 使用协议声明的编码解压载荷。
+// decompressPayload decompresses the payload using the codec declared by the protocol.
 func decompressPayload(payload []byte, codec string) ([]byte, error) {
 	if codec != "" && !strings.EqualFold(codec, "gzip") {
-		return nil, fmt.Errorf("暂不支持压缩算法 %q", codec)
+		return nil, fmt.Errorf("unsupported compression codec %q", codec)
 	}
 	reader, err := gzip.NewReader(bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("gzip 解压失败：%w", err)
+		return nil, fmt.Errorf("gzip decompression failed: %w", err)
 	}
 	defer reader.Close()
 	decoded, err := io.ReadAll(io.LimitReader(reader, maxConnectFrameBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("读取 gzip 内容失败：%w", err)
+		return nil, fmt.Errorf("failed to read gzip content: %w", err)
 	}
 	if len(decoded) > maxConnectFrameBytes {
-		return nil, fmt.Errorf("gzip 解压后超过 %d 字节限制", maxConnectFrameBytes)
+		return nil, fmt.Errorf("gzip content exceeded the %d byte limit", maxConnectFrameBytes)
 	}
 	return decoded, nil
 }
 
-// decodeUnaryRequest 解析单次 RPC 请求并提取关键关联标识。
+// decodeUnaryRequest parses a unary RPC request and extracts key correlation identifiers.
 func decodeUnaryRequest(path string, payload []byte) (decodedJSON string, kind string, requestID string, conversationID string, err error) {
 	switch path {
 	case bidiAppendPath:
@@ -197,7 +197,7 @@ func decodeUnaryRequest(path string, payload []byte) (decodedJSON string, kind s
 	return marshalProtoJSON(message), kind, "", conversationIDFromUnaryRequest(message), nil
 }
 
-// decodeBidiClientMessage 解析 BidiAppend 携带的十六进制 Agent 消息。
+// decodeBidiClientMessage parses the hex-encoded Agent message carried by BidiAppend.
 func decodeBidiClientMessage(request *aiserverv1.BidiAppendRequest) (*agentv1.AgentClientMessage, string, error) {
 	if request == nil {
 		return nil, "", nil
@@ -223,7 +223,7 @@ func decodeBidiClientMessage(request *aiserverv1.BidiAppendRequest) (*agentv1.Ag
 	return message, activeOneofName(message), nil
 }
 
-// conversationIDFromClientMessage 从 Agent 消息的会话字段提取会话标识。
+// conversationIDFromClientMessage extracts the conversation identifier from the Agent message's conversation field.
 func conversationIDFromClientMessage(message *agentv1.AgentClientMessage) string {
 	if message == nil {
 		return ""
@@ -237,7 +237,7 @@ func conversationIDFromClientMessage(message *agentv1.AgentClientMessage) string
 	return ""
 }
 
-// conversationIDFromUnaryRequest 从已知 RPC 请求中提取会话标识。
+// conversationIDFromUnaryRequest extracts the conversation identifier from a known RPC request.
 func conversationIDFromUnaryRequest(message proto.Message) string {
 	switch typed := message.(type) {
 	case *agentv1.NotifyConversationCloneRequest:
@@ -249,7 +249,7 @@ func conversationIDFromUnaryRequest(message proto.Message) string {
 	}
 }
 
-// decodeUnaryResponse 解析单次 RPC 响应并生成 JSON 视图。
+// decodeUnaryResponse parses a unary RPC response and produces a JSON view.
 func decodeUnaryResponse(path string, payload []byte) (decodedJSON string, kind string, err error) {
 	message, kind := unaryResponseMessage(path)
 	if message == nil {
@@ -261,7 +261,7 @@ func decodeUnaryResponse(path string, payload []byte) (decodedJSON string, kind 
 	return marshalProtoJSON(message), kind, nil
 }
 
-// hydrateStoredExchange 为历史捕获补齐正文和 Connect 帧视图。
+// hydrateStoredExchange backfills body and Connect frame views for a historical capture.
 func hydrateStoredExchange(exchange *Exchange) bool {
 	if exchange == nil || (exchange.State != "completed" && exchange.State != "streaming") {
 		return false
@@ -358,11 +358,11 @@ func hydrateStoredExchange(exchange *Exchange) bool {
 	return changed
 }
 
-// hydrateStoredTextPayload 为历史文本载荷补齐 JSON 视图。
+// hydrateStoredTextPayload backfills the JSON view for a historical text payload.
 func hydrateStoredTextPayload(payload *Payload) bool {
 	raw, err := hex.DecodeString(strings.TrimSpace(payload.RawHex))
 	if err != nil {
-		payload.DecodeError = fmt.Sprintf("解析已存储正文失败：%v", err)
+		payload.DecodeError = fmt.Sprintf("failed to parse the stored body: %v", err)
 		return true
 	}
 	decoded, language, decodeErr := decodeCapturedContent(raw, payload.ContentType, payload.ContentCodec)
@@ -377,4 +377,4 @@ func hydrateStoredTextPayload(payload *Payload) bool {
 	return true
 }
 
-// decodeCapturedContent 按媒体类型和压缩编码解码任意捕获正文。
+// decodeCapturedContent decodes any captured body by media type and compression encoding.

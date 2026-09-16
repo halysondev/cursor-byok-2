@@ -14,7 +14,7 @@ export default defineProviderPlugin({
   providers: [codexProvider],
   resources: [{
     type: RESOURCE_TYPE,
-    displayName: { "en-US": "ChatGPT accounts", "zh-CN": "ChatGPT 账号" },
+    displayName: "ChatGPT accounts",
     add: [codexDeviceOAuth],
     import: credentialImport,
     present: presentAccount,

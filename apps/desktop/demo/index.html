@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,7 +14,7 @@
       }
     </style>
     <script>
-      // 在应用样式加载前按主题参数铺底色，避免切换 poster 时闪出错误颜色
+      // Paint the theme background before app styles load so posters never flash the wrong color.
       (function () {
         var light = new URLSearchParams(location.search).get("theme") === "default-light";
         document.documentElement.style.setProperty("--boot-bg", light ? "#f5f5f5" : "#141414");
@@ -24,7 +24,7 @@
         document.head.appendChild(meta);
       })();
     </script>
-    <title>Cursor BYOK 产品演示</title>
+    <title>Cursor BYOK product demo</title>
   </head>
   <body>
     <div id="root"></div>

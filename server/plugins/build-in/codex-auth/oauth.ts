@@ -140,7 +140,7 @@ async function poll(sessionValue: JsonValue, context: PluginContext): Promise<OA
     }),
   });
   const body = parseBody(response.body);
-  // 该端点用 403/404 表示"尚未完成授权"。
+  // This endpoint uses 403/404 to mean "authorization not yet completed".
   if (response.status === 403 || response.status === 404) return { status: "pending" };
 
   const code = errorCode(body);
@@ -197,14 +197,8 @@ async function poll(sessionValue: JsonValue, context: PluginContext): Promise<OA
 export const codexDeviceOAuth: OAuth2AddMethod = {
   type: "oauth2.0",
   id: "chatgpt-device",
-  displayName: {
-    "en-US": "Sign in with ChatGPT",
-    "zh-CN": "使用 ChatGPT 登录",
-  },
-  description: {
-    "en-US": "Authorize this device with OpenAI, then add the resulting ChatGPT account.",
-    "zh-CN": "在 OpenAI 完成设备授权后,自动添加对应的 ChatGPT 账号。",
-  },
+  displayName: "Sign in with ChatGPT",
+  description: "Authorize this device with OpenAI, then add the resulting ChatGPT account.",
   begin,
   poll,
 };

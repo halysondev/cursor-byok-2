@@ -22,7 +22,7 @@ pub fn request(id: u32, call: &ToolCall, context: &ExecContext) -> Result<pb::Ag
             .map(str::to_string)
             .ok_or_else(|| Error::Protocol(format!("{} is missing {name}", call.name)))
     };
-    // Claude 系模型常按 Claude Code 习惯输出别名参数(如 file_path),逐个回退兼容。
+    // Claude-family models often emit alias parameters the way Claude Code does (e.g. file_path); each alias is accepted for compatibility.
     let string_aliased = |names: &[&str]| -> Result<String> {
         for name in names {
             if let Some(value) = call.arguments.get(name).and_then(Value::as_str) {

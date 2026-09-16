@@ -12,7 +12,7 @@ const META_FILE: &str = "meta.json";
 const RULE_EXTENSION: &str = "md";
 pub const LOCAL_ID_PREFIX: &str = "local-";
 
-/// 一条规则的完整视图:knowledge 来自 md 文件,其余字段来自 meta.json。
+/// A rule's full view: knowledge comes from the md file; the other fields come from meta.json.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RuleRecord {
     pub id: String,
@@ -31,7 +31,7 @@ pub enum JournalOp {
     Remove,
 }
 
-/// 离线期间未同步到上游的一次变更。
+/// A change made while offline that has not been synced upstream.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub op: JournalOp,
@@ -58,7 +58,7 @@ struct RuleMeta {
     git_origin: String,
 }
 
-/// md 文件为核心的规则存储;调用方需自行串行化并发访问。
+/// Rule storage centered on md files; callers must serialize concurrent access themselves.
 pub struct RuleStore {
     root: PathBuf,
 }
@@ -124,7 +124,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 离线新增的规则在上游落地后,把本地临时 id 换成上游分配的真实 id。
+    /// Once an offline-added rule lands upstream, swap the local temporary id for the real upstream-assigned id.
     pub fn promote(&self, old_id: &str, new_id: &str) -> Result<()> {
         validate_id(old_id)?;
         validate_id(new_id)?;
@@ -145,7 +145,7 @@ impl RuleStore {
         self.write_meta(&meta)
     }
 
-    /// 用上游的完整列表覆盖本地镜像;仅应在日志为空(已全部回放)时调用。
+    /// Overwrite the local mirror with the complete upstream list; only call when the log is empty (everything replayed).
     pub fn replace_all(&self, records: &[RuleRecord]) -> Result<()> {
         let mut meta = self.read_meta();
         meta.rules.clear();
@@ -195,11 +195,11 @@ impl RuleStore {
     pub fn record_update(&self, id: &str) -> Result<()> {
         let mut meta = self.read_meta();
         if journal_contains(&meta.journal, id, JournalOp::Add) {
-            // 回放 add 时会读取最新内容,无需单独的 update 日志。
+            // Replaying add reads the latest content, so no separate update log is needed.
             return Ok(());
         }
         let op = if id.starts_with(LOCAL_ID_PREFIX) {
-            // 本地临时 id 没有对应的 add 日志(如镜像覆盖后的残留),按新增回放。
+            // A local temporary id with no add log (e.g. residue after a mirror overwrite) is replayed as a new addition.
             JournalOp::Add
         } else {
             JournalOp::Update
@@ -257,7 +257,7 @@ fn assemble(id: &str, knowledge: String, meta: Option<&RuleMeta>, path: &Path) -
             is_generated: meta.is_generated,
             git_origin: meta.git_origin.clone(),
         },
-        // 用户手放的 md 文件没有元数据,用文件名当标题、修改时间当创建时间。
+        // An md file dropped in by hand has no metadata; use the file name as the title and the mtime as the creation time.
         None => RuleRecord {
             id: id.into(),
             knowledge,
@@ -393,7 +393,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let store = RuleStore::open(root.path().join("rules")).unwrap();
 
-        // 离线新增后再更新:回放 add 即可携带最新内容,不产生 update 日志。
+        // An update after an offline add: replaying add already carries the latest content, so no update log is produced.
         store
             .upsert(&record("local-a", "v1", "2026-01-01T00:00:00.000Z"))
             .unwrap();
@@ -407,11 +407,11 @@ mod tests {
             }]
         );
 
-        // 离线新增后又删除:上游从未见过它,日志清空。
+        // A delete after an offline add: upstream never saw it, so the log is cleared.
         store.record_remove("local-a").unwrap();
         assert!(journal(&store).is_empty());
 
-        // 更新上游已有规则:多次更新合并为一条;删除后 update 日志被顶替。
+        // Updating an existing upstream rule: repeated updates coalesce into one; after a delete the update log is superseded.
         store.record_update("42").unwrap();
         store.record_update("42").unwrap();
         assert_eq!(

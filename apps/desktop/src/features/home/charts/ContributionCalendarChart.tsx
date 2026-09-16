@@ -1,7 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { init, Rect, type ElementEvent } from "zrender";
-import type { Locale } from "../../../i18n/runtime";
-import { useI18n } from "../../../i18n/store";
 import { useTooltip, type TooltipAnchor } from "../../../shared/ui/Tooltip";
 import styles from "./ContributionCalendarChart.module.scss";
 
@@ -66,10 +64,10 @@ function isCellExtra(value: unknown): value is CellExtra {
   return typeof value === "object" && value !== null && (value as CellExtra).kind === "calendar-cell";
 }
 
-function buildCalendarLayout(data: ContributionDay[], locale: Locale) {
+function buildCalendarLayout(data: ContributionDay[]) {
   if (data.length === 0) return null;
 
-  const monthFormatter = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
+  const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
   const maximum = Math.max(1, ...data.map(({ tokens }) => tokens));
   const firstDate = parseDate(data[0].date);
   const calendarStart = new Date(firstDate.getTime() - mondayIndex(firstDate) * DAY_IN_MS);
@@ -90,15 +88,14 @@ function buildCalendarLayout(data: ContributionDay[], locale: Locale) {
 }
 
 export function ContributionCalendarChart({ data }: ContributionCalendarChartProps) {
-  const { locale } = useI18n();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<ReturnType<typeof buildCalendarLayout>>(null);
   const scheduleDrawRef = useRef<() => void>(() => undefined);
   const { show: showTooltip, hide: hideTooltip } = useTooltip();
   const [axisLabels, setAxisLabels] = useState<AxisLabel[]>([]);
-  const layout = useMemo(() => buildCalendarLayout(data, locale), [data, locale]);
-  const tokenFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
+  const layout = useMemo(() => buildCalendarLayout(data), [data]);
+  const tokenFormatter = useMemo(() => new Intl.NumberFormat("en-US"), []);
   layoutRef.current = layout;
 
   useLayoutEffect(() => {
@@ -125,7 +122,7 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
       };
       showTooltip(anchor, undefined, <div className={styles.tooltipContent}>
         <strong>{extra.date}</strong>
-        <span>{t("Token 用量：{tokens}", { tokens: tokenFormatter.format(extra.tokens) })}</span>
+        <span>{`Token usage: ${tokenFormatter.format(extra.tokens)}`}</span>
       </div>);
     };
     const handleMouseOut = (event: ElementEvent) => {
@@ -249,13 +246,13 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
   if (!layout) return null;
 
   return (
-    <section className={styles.root} aria-label={t("过去一年的 Token 用量")}>
+    <section className={styles.root} aria-label={"Token usage over the past year"}>
       <div ref={scrollerRef} className={styles.scroller}>
         <div
           ref={canvasRef}
           className={styles.canvas}
           role="img"
-          aria-label={t("过去一年的 Token 用量日历")}
+          aria-label={"Token usage calendar for the past year"}
         />
         <div className={styles.axis} aria-hidden="true">
           {axisLabels.map((label) => <span key={label.key} style={{ left: label.left }}>{label.text}</span>)}

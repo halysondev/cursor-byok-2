@@ -30,17 +30,17 @@ function formatPrice(value: number) {
 function parsePrice(value: string, label: string) {
   const price = Number(value);
   if (!Number.isFinite(price) || price < 0) {
-    throw new Error(t("{label}必须是非负数", { label }));
+    throw new Error(`${label} must be a non-negative number`);
   }
   return price;
 }
 
 function toSettings(draft: PricingDraft): TokenPricingSettings {
   return {
-    input_per_million: parsePrice(draft.input_per_million, t("输入价格")),
-    output_per_million: parsePrice(draft.output_per_million, t("输出价格")),
-    cache_read_per_million: parsePrice(draft.cache_read_per_million, t("缓存读取价格")),
-    cache_write_per_million: parsePrice(draft.cache_write_per_million, t("缓存写入价格")),
+    input_per_million: parsePrice(draft.input_per_million, "Input price"),
+    output_per_million: parsePrice(draft.output_per_million, "Output price"),
+    cache_read_per_million: parsePrice(draft.cache_read_per_million, "Cache read price"),
+    cache_write_per_million: parsePrice(draft.cache_write_per_million, "Cache write price"),
   };
 }
 
@@ -71,7 +71,7 @@ export function PricingSettingsCard() {
       const next = toSettings(draft);
       if (await appStore.updatePricingSettings(next)) {
         setEditing(false);
-        message(t("定价设置已保存"));
+        message("Pricing settings saved");
       }
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
@@ -86,23 +86,23 @@ export function PricingSettingsCard() {
 
   const action = editing ? (
     <div className={styles.actionGroup}>
-      <Button size="small" disabled={saving} onClick={restoreDefault}>{t("恢复默认")}</Button>
-      <Button size="small" disabled={saving} onClick={cancel}>{t("取消")}</Button>
+      <Button size="small" disabled={saving} onClick={restoreDefault}>{"Restore defaults"}</Button>
+      <Button size="small" disabled={saving} onClick={cancel}>{"Cancel"}</Button>
       <Button variant="primary" size="small" disabled={saving} onClick={() => void save()}>
-        {saving ? t("保存中…") : t("保存")}
+        {saving ? "Saving…" : "Save"}
       </Button>
     </div>
   ) : (
-    <button type="button" className={styles.headerAction} onClick={edit}>{t("编辑")}</button>
+    <button type="button" className={styles.headerAction} onClick={edit}>{"Edit"}</button>
   );
 
   return (
-    <TitledCard title={t("Token 定价")} action={action}>
+    <TitledCard title={"Token pricing"} action={action}>
       <div className={styles.content}>
-        <small>{t("用于首页价值估算的 Token 单价，单位：美元 / 百万 Token。")}</small>
+        <small>{"Per-token unit prices used for home-page cost estimates, in USD per million tokens."}</small>
         {editing ? (
           <div className={styles.customFields}>
-            <FormField label={t("输入价格（$/1M）")}>
+            <FormField label={"Input price ($/1M)"}>
               <TextInput
                 type="number"
                 min={0}
@@ -111,7 +111,7 @@ export function PricingSettingsCard() {
                 onChange={(event) => setDraft({ ...draft, input_per_million: event.target.value })}
               />
             </FormField>
-            <FormField label={t("输出价格（$/1M）")}>
+            <FormField label={"Output price ($/1M)"}>
               <TextInput
                 type="number"
                 min={0}
@@ -120,7 +120,7 @@ export function PricingSettingsCard() {
                 onChange={(event) => setDraft({ ...draft, output_per_million: event.target.value })}
               />
             </FormField>
-            <FormField label={t("缓存读取价格（$/1M）")}>
+            <FormField label={"Cache read price ($/1M)"}>
               <TextInput
                 type="number"
                 min={0}
@@ -129,7 +129,7 @@ export function PricingSettingsCard() {
                 onChange={(event) => setDraft({ ...draft, cache_read_per_million: event.target.value })}
               />
             </FormField>
-            <FormField label={t("缓存写入价格（$/1M）")}>
+            <FormField label={"Cache write price ($/1M)"}>
               <TextInput
                 type="number"
                 min={0}
@@ -142,19 +142,19 @@ export function PricingSettingsCard() {
         ) : (
           <>
             <div className={styles.row}>
-              <strong>{t("输入价格（$/1M）")}</strong>
+              <strong>{"Input price ($/1M)"}</strong>
               <span className={styles.value}>{formatPrice(pricing.input_per_million)}</span>
             </div>
             <div className={styles.row}>
-              <strong>{t("输出价格（$/1M）")}</strong>
+              <strong>{"Output price ($/1M)"}</strong>
               <span className={styles.value}>{formatPrice(pricing.output_per_million)}</span>
             </div>
             <div className={styles.row}>
-              <strong>{t("缓存读取价格（$/1M）")}</strong>
+              <strong>{"Cache read price ($/1M)"}</strong>
               <span className={styles.value}>{formatPrice(pricing.cache_read_per_million)}</span>
             </div>
             <div className={styles.row}>
-              <strong>{t("缓存写入价格（$/1M）")}</strong>
+              <strong>{"Cache write price ($/1M)"}</strong>
               <span className={styles.value}>{formatPrice(pricing.cache_write_per_million)}</span>
             </div>
           </>

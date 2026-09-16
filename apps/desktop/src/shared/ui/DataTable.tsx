@@ -12,7 +12,7 @@ export type DataTableColumn<T> = {
   sticky?: "right";
 };
 
-export function DataTable<T>({ rows, columns, rowKey, minWidth, emptyText = t("暂无数据") }: {
+export function DataTable<T>({ rows, columns, rowKey, minWidth, emptyText = "No data" }: {
   rows: T[];
   columns: DataTableColumn<T>[];
   rowKey: (row: T) => string | number;

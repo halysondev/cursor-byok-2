@@ -25,7 +25,7 @@ export type AccountQuota = {
   updatedAtMs: number;
 };
 
-/** 单条 grok-account 资源的 privateData 形状。 */
+/** Shape of a single grok-account resource's privateData. */
 export type AccountData = {
   accessToken: string;
   refreshToken: string | null;
@@ -134,7 +134,7 @@ function resetAtMs(value: unknown): number | null {
   return null;
 }
 
-/** 解析 Grok CLI 计费接口的积分响应;creditUsagePercent 表示已用占比。 */
+/** Parses the Grok CLI billing endpoint's credit response; creditUsagePercent is the used share. */
 export function parseGrokUsage(body: unknown, nowMs = Date.now()): AccountQuota {
   const root = object(body) ?? {};
   const config = object(root.config) ?? root;
@@ -146,7 +146,7 @@ export function parseGrokUsage(body: unknown, nowMs = Date.now()): AccountQuota 
       used = (onDemandUsed / onDemandCap) * 100;
     }
   }
-  // 存在计费周期但没有用量字段时视为未使用。
+  // A billing period without usage fields counts as unused.
   if (used === null && (config.currentPeriod ?? config.current_period) !== undefined) {
     used = 0;
   }
@@ -175,7 +175,7 @@ export function quotaState(quota: AccountQuota | null, nowMs = Date.now()): Reso
   };
 }
 
-/** 额度耗尽时的资源补丁:标记积分耗尽并进入冷却,重置时间未知时回退 1 小时。 */
+/** Resource patch for quota exhaustion: marks credits exhausted and cools down; falls back to 1 hour when the reset time is unknown. */
 export function quotaExhaustedPatch(data: AccountData, nowMs = Date.now()): ResourcePatch {
   const quota: AccountQuota = {
     planLabel: data.quota?.planLabel ?? null,
@@ -198,7 +198,7 @@ export function accountHeaders(data: AccountData): Record<string, string> {
   return {
     accept: "application/json",
     authorization: `Bearer ${data.accessToken}`,
-    // Grok CLI 计费接口要求该头标识客户端来源。
+    // The Grok CLI billing endpoint requires this header identifying the client origin.
     "x-xai-token-auth": "xai-grok-cli",
   };
 }
@@ -217,14 +217,14 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   if (quota && quota.remainingPercent !== null) {
     metrics.push({
       id: "credits",
-      label: { "en-US": "Credits", "zh-CN": "积分额度" },
+      label: "Credits",
       unit: "percent",
       value: quota.remainingPercent,
       ...(quota.resetAtMs !== null ? { resetAtMs: quota.resetAtMs } : {}),
     });
   }
   return {
-    // 旧记录可能存的是账号 ID;展示时优先从 token 现算邮箱。
+    // Old records may store the account ID; for display, prefer deriving the email from the token.
     displayName: jwtDisplayName(data.accessToken) ?? data.displayName,
     ...(quota?.planLabel ? { description: quota.planLabel } : {}),
     ...(metrics.length > 0 ? { metrics } : {}),
@@ -319,14 +319,8 @@ export function parseCredentialFiles(files: ResourceImportFile[]): {
 }
 
 export const credentialImport: ResourceImportSupport = {
-  displayName: {
-    "en-US": "Import Grok credentials",
-    "zh-CN": "导入 Grok 凭证",
-  },
-  description: {
-    "en-US": "Import one or more Grok JSON credential files.",
-    "zh-CN": "导入一个或多个 Grok JSON 凭证文件。",
-  },
+  displayName: "Import Grok credentials",
+  description: "Import one or more Grok JSON credential files.",
   accept: [".json"],
   multiple: true,
   parse: async (files: ResourceImportFile[]): Promise<ResourceImportResult> => {

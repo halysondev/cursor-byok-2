@@ -1,4 +1,4 @@
-// capture_pipeline.go 负责服务请求响应体的捕获、解码和事件追加。
+// capture_pipeline.go captures, decodes, and appends events for service request/response bodies.
 package main
 
 import (
@@ -13,10 +13,10 @@ import (
 	"time"
 )
 
-// exchangeIDContextKey 隔离反向服务内部使用的捕获编号。
+// exchangeIDContextKey isolates the capture identifier used inside the reverse proxy.
 type exchangeIDContextKey struct{}
 
-// captureRequest 捕获请求元数据并安装请求体读取器。
+// captureRequest captures request metadata and installs the request body reader.
 func (server *Server) captureRequest(request *http.Request) *http.Request {
 	if request == nil {
 		return request
@@ -84,7 +84,7 @@ func (server *Server) captureRequest(request *http.Request) *http.Request {
 	return request
 }
 
-// clearExchanges 清空内存和持久化捕获，并重置递增编号。
+// clearExchanges clears in-memory and persisted captures and resets the incrementing ID.
 func (server *Server) clearExchanges() error {
 	server.captureMu.Lock()
 	defer server.captureMu.Unlock()
@@ -95,7 +95,7 @@ func (server *Server) clearExchanges() error {
 	return nil
 }
 
-// captureResponse 创建响应记录更新并包装响应体捕获器。
+// captureResponse creates the response record update and wraps the response body capturer.
 func (server *Server) captureResponse(response *http.Response) error {
 	if response == nil {
 		return nil
@@ -150,7 +150,7 @@ func (server *Server) captureResponse(response *http.Response) error {
 	return nil
 }
 
-// failExchange 保存反向转发失败状态。
+// failExchange records a reverse-forwarding failure.
 func (server *Server) failExchange(request *http.Request, upstreamErr error) {
 	id := exchangeID(request)
 	if id == "" || upstreamErr == nil {
@@ -163,13 +163,13 @@ func (server *Server) failExchange(request *http.Request, upstreamErr error) {
 	})
 }
 
-// finishRequestBody 解压、解码并保存完整请求体的最终状态。
+// finishRequestBody decompresses, decodes, and stores the final state of the complete request body.
 func (server *Server) finishRequestBody(id, path, contentType, codec string, captured []byte, size int64, truncated bool, readErr error) {
 	decodePayload := captured
 	var contentDecodeErr error
 	decodeProto := decodesUnaryRequest(path) && isUnaryProtoContentType(contentType)
 	if decodeProto && truncated {
-		contentDecodeErr = errors.New("请求正文超过抓取上限，无法完整解码")
+		contentDecodeErr = errors.New("request body exceeded the capture limit and cannot be fully decoded")
 	} else if decodeProto && codec != "" && !strings.EqualFold(codec, "identity") {
 		decodePayload, contentDecodeErr = decompressPayload(captured, codec)
 	}
@@ -209,7 +209,7 @@ func (server *Server) finishRequestBody(id, path, contentType, codec string, cap
 	})
 }
 
-// requestContentCodec 读取请求方向的 Connect 或 HTTP 压缩编码。
+// requestContentCodec reads the request direction's Connect or HTTP compression encoding.
 func requestContentCodec(path string, headers http.Header) string {
 	if streamingRequestMessageType(path) != "" {
 		return strings.TrimSpace(headers.Get("Connect-Content-Encoding"))
@@ -217,7 +217,7 @@ func requestContentCodec(path string, headers http.Header) string {
 	return strings.TrimSpace(headers.Get("Content-Encoding"))
 }
 
-// responseContentCodec 读取响应方向的 Connect 或 HTTP 压缩编码。
+// responseContentCodec reads the response direction's Connect or HTTP compression encoding.
 func responseContentCodec(path string, headers http.Header) string {
 	if streamingResponseMessageType(path) != "" {
 		return strings.TrimSpace(headers.Get("Connect-Content-Encoding"))
@@ -230,13 +230,13 @@ func responseContentCodec(path string, headers http.Header) string {
 	return strings.TrimSpace(headers.Get("Content-Encoding"))
 }
 
-// finishResponseBody 解压、解码并保存完整响应体的最终状态。
+// finishResponseBody decompresses, decodes, and stores the final state of the complete response body.
 func (server *Server) finishResponseBody(id, path, contentType, codec string, captured []byte, size int64, truncated bool, readErr error) {
 	decodePayload := captured
 	var contentDecodeErr error
 	decodeProto := decodesUnaryResponse(path) && isUnaryProtoContentType(contentType)
 	if decodeProto && truncated {
-		contentDecodeErr = errors.New("响应正文超过抓取上限，无法完整解码")
+		contentDecodeErr = errors.New("response body exceeded the capture limit and cannot be fully decoded")
 	} else if decodeProto && codec != "" && !strings.EqualFold(codec, "identity") {
 		decodePayload, contentDecodeErr = decompressPayload(captured, codec)
 	}
@@ -273,7 +273,7 @@ func (server *Server) finishResponseBody(id, path, contentType, codec string, ca
 	})
 }
 
-// appendRequestFrame 把请求方向的流式帧追加到临时快照。
+// appendRequestFrame appends a request-direction streaming frame to the in-flight snapshot.
 func (server *Server) appendRequestFrame(id string, frame FrameView) {
 	server.store.updateTransient(id, func(exchange *Exchange) {
 		if len(exchange.Request.Frames) < server.config.MaxFrames {
@@ -288,7 +288,7 @@ func (server *Server) appendRequestFrame(id string, frame FrameView) {
 	})
 }
 
-// appendResponseFrame 把响应方向的流式帧追加到临时快照。
+// appendResponseFrame appends a response-direction streaming frame to the in-flight snapshot.
 func (server *Server) appendResponseFrame(id string, frame FrameView) {
 	server.store.updateTransient(id, func(exchange *Exchange) {
 		if len(exchange.Response.Frames) < server.config.MaxFrames {
@@ -304,7 +304,7 @@ func (server *Server) appendResponseFrame(id string, frame FrameView) {
 	})
 }
 
-// exchangeID 从请求上下文读取捕获记录编号。
+// exchangeID reads the capture record identifier from the request context.
 func exchangeID(request *http.Request) string {
 	if request == nil {
 		return ""
@@ -316,7 +316,7 @@ func exchangeID(request *http.Request) string {
 	return value
 }
 
-// browserAddress 把通配监听地址转换为浏览器可访问的回环地址。
+// browserAddress converts a wildcard listen address into a browser-reachable loopback address.
 func browserAddress(address string) string {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
@@ -328,18 +328,18 @@ func browserAddress(address string) string {
 	return net.JoinHostPort(host, port)
 }
 
-// validateLoopbackAddress 拒绝把调试服务暴露到非回环网卡。
+// validateLoopbackAddress refuses to expose the debug service on a non-loopback interface.
 func validateLoopbackAddress(address string) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
-		return fmt.Errorf("调试服务监听地址无效：%w", err)
+		return fmt.Errorf("invalid debug service listen address: %w", err)
 	}
 	if strings.EqualFold(host, "localhost") {
 		return nil
 	}
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
-		return errors.New("调试服务只能监听本机回环地址")
+		return errors.New("the debug service may only listen on a loopback address")
 	}
 	return nil
 }

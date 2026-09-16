@@ -1,4 +1,4 @@
-// resolver.go 解析压缩 bundle 中的局部符号、模块别名和导出别名。
+// resolver.go resolves local symbols, module aliases, and export aliases in minified bundles.
 package main
 
 import (
@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// newTypeResolver 建立消息、枚举和模块别名的统一索引。
+// newTypeResolver builds a unified index of messages, enums, and module aliases.
 func newTypeResolver(messages []Message, enums []Enum, aliases aliasIndex, exportAliases aliasIndex) *TypeResolver {
 	resolver := &TypeResolver{
 		bySymbol: make(map[string][]symbolDef),
@@ -79,7 +79,7 @@ func newTypeResolver(messages []Message, enums []Enum, aliases aliasIndex, expor
 	return resolver
 }
 
-// buildAliasIndex 提取变量声明和赋值形成的局部别名。
+// buildAliasIndex extracts local aliases formed by variable declarations and assignments.
 func buildAliasIndex(text string, moduleStarts []int) aliasIndex {
 	directByModule := make(map[int]map[string]string)
 	addMatches := func(matches [][]int) {
@@ -155,7 +155,7 @@ func buildAliasIndex(text string, moduleStarts []int) aliasIndex {
 	return aliases
 }
 
-// buildWebpackExportAliasIndex 提取 Webpack 导出表中的符号别名。
+// buildWebpackExportAliasIndex extracts symbol aliases from Webpack export tables.
 func buildWebpackExportAliasIndex(text string, moduleStarts []int) aliasIndex {
 	aliasSets := make(map[int]map[string]map[string]bool)
 	addAlias := func(moduleStart int, root string, alias string) {
@@ -173,7 +173,7 @@ func buildWebpackExportAliasIndex(text string, moduleStarts []int) aliasIndex {
 		aliasSets[moduleStart][root][alias] = true
 	}
 
-	// Webpack 通过 n.d(t, { KS: () => T }) 暴露成员；服务使用 r.KS，消息定义使用局部符号 T。
+	// Webpack exposes members via n.d(t, { KS: () => T }); services use r.KS while message definitions use the local symbol T.
 	for _, blockMatch := range webpackExportBlockRe.FindAllStringIndex(text, -1) {
 		moduleStart := moduleStartForPos(moduleStarts, blockMatch[0])
 		blockStart := blockMatch[1] - 1
@@ -203,7 +203,7 @@ func buildWebpackExportAliasIndex(text string, moduleStarts []int) aliasIndex {
 	return aliases
 }
 
-// aliasesForSymbols 返回目标符号集合对应的去重别名。
+// aliasesForSymbols returns deduplicated aliases for a set of target symbols.
 func aliasesForSymbols(aliases map[string][]string, symbols ...string) []string {
 	if len(aliases) == 0 {
 		return nil
@@ -223,7 +223,7 @@ func aliasesForSymbols(aliases map[string][]string, symbols ...string) []string 
 	return result
 }
 
-// looksLikeFullTypeName 判断引用是否已经是全限定协议类型名。
+// looksLikeFullTypeName reports whether a reference is already a fully qualified protocol type name.
 func looksLikeFullTypeName(ref string) bool {
 	trimmed := strings.TrimSpace(ref)
 	if strings.HasPrefix(trimmed, "google.protobuf.") || strings.HasPrefix(trimmed, "google.rpc.") {
@@ -233,7 +233,7 @@ func looksLikeFullTypeName(ref string) bool {
 	return matched
 }
 
-// pickBestDefinition 按模块、类别、首选包和源码距离选择定义。
+// pickBestDefinition chooses a definition by module, kind, preferred package, and source distance.
 func pickBestDefinition(candidates []symbolDef, contextPos int, contextModuleStart int, preferredPkg string, expectedKind string) (symbolDef, bool) {
 	if len(candidates) == 0 {
 		return symbolDef{}, false
@@ -277,7 +277,7 @@ func pickBestDefinition(candidates []symbolDef, contextPos int, contextModuleSta
 		}
 	}
 
-	// 选择绝对距离最近的定义，距离相同时优先前向定义。
+	// Pick the definition with the smallest absolute distance; ties prefer forward definitions.
 	bestIndex := -1
 	bestDistance := 0
 	bestIsFuture := false
@@ -297,7 +297,7 @@ func pickBestDefinition(candidates []symbolDef, contextPos int, contextModuleSta
 			continue
 		}
 		if distance == bestDistance {
-			// 距离相同时优先当前位置之前的定义。
+			// Ties prefer definitions earlier than the current position.
 			if bestIsFuture && !isFuture {
 				bestIndex = index
 				bestIsFuture = isFuture
@@ -310,7 +310,7 @@ func pickBestDefinition(candidates []symbolDef, contextPos int, contextModuleSta
 	return filtered[bestIndex], true
 }
 
-// ResolveTypeName 把局部变量、别名或短名称解析为全限定类型名。
+// ResolveTypeName resolves a local variable, alias, or short name into a fully qualified type name.
 func (resolver *TypeResolver) ResolveTypeName(ref string, contextPos int, contextModuleStart int, preferredPkg string, expectedKind string) (string, bool) {
 	if resolver == nil {
 		return "", false
@@ -401,7 +401,7 @@ func (resolver *TypeResolver) ResolveTypeName(ref string, contextPos int, contex
 	return "", false
 }
 
-// fallbackTypeToken 从无法解析的引用生成合法类型占位名。
+// fallbackTypeToken generates a valid placeholder type name from an unresolvable reference.
 func fallbackTypeToken(ref string) string {
 	token := strings.TrimSpace(ref)
 	if token == "" {
@@ -414,7 +414,7 @@ func fallbackTypeToken(ref string) string {
 	return token
 }
 
-// absInt 返回整数绝对值。
+// absInt returns the absolute value of an integer.
 func absInt(value int) int {
 	if value < 0 {
 		return -value

@@ -1,4 +1,4 @@
-// services.go 解析枚举、服务方法和压缩对象的配对括号。
+// services.go parses enums, service methods, and matching braces of minified objects.
 package main
 
 import (
@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// extractEnums 从旧式和工厂式声明中提取枚举。
+// extractEnums pulls enums out of legacy and factory-style declarations.
 func extractEnums(text string, moduleStarts []int) []Enum {
 	var enums []Enum
 	enumExists := func(typeName, varName string) bool {
@@ -18,8 +18,8 @@ func extractEnums(text string, moduleStarts []int) []Enum {
 		return false
 	}
 
-	// 匹配任意包中的 setEnumType(XXX, "xxx.v1.EnumName", [...]) 枚举声明。
-	// JS 变量名可以包含 $ 符号
+	// Match setEnumType(XXX, "xxx.v1.EnumName", [...]) enum declarations in any package.
+	// JS variable names may contain $
 	enumRe := regexp.MustCompile(`setEnumType\s*\(\s*([\w$]+)\s*,\s*"([\w.]+)"\s*,\s*\[`)
 
 	matches := enumRe.FindAllStringSubmatchIndex(text, -1)
@@ -27,7 +27,7 @@ func extractEnums(text string, moduleStarts []int) []Enum {
 		varName := text[match[2]:match[3]]
 		typeName := text[match[4]:match[5]]
 
-		// 提取枚举值数组。
+		// Extract the enum value array.
 		bracketStart := match[1] - 1
 		values := extractEnumValues(text, bracketStart)
 
@@ -44,7 +44,7 @@ func extractEnums(text string, moduleStarts []int) []Enum {
 		enums = append(enums, enum)
 	}
 
-	// 匹配现代 @bufbuild/protobuf 工厂形式，例如 Role=A.makeEnum("aiserver.v1.InferenceMessageRole",[{...}])。
+	// Match the modern @bufbuild/protobuf factory form, e.g. Role=A.makeEnum("aiserver.v1.InferenceMessageRole",[{...}]).
 	enumFactoryRe := regexp.MustCompile(`([\w$]+)\s*=\s*[\w$.]+\.makeEnum\s*\(\s*["']([\w.]+)["']\s*,\s*\[`)
 	factoryMatches := enumFactoryRe.FindAllStringSubmatchIndex(text, -1)
 	for _, match := range factoryMatches {
@@ -74,7 +74,7 @@ func extractEnums(text string, moduleStarts []int) []Enum {
 	return enums
 }
 
-// extractServices 从命名或匿名描述符中提取服务。
+// extractServices pulls services out of named or anonymous descriptors.
 func extractServices(text string, moduleStarts []int) []Service {
 	var services []Service
 	seenTypeNames := make(map[string]bool)
@@ -100,7 +100,7 @@ func extractServices(text string, moduleStarts []int) []Service {
 		seenTypeNames[typeName] = true
 	}
 
-	// 匹配 VarName = { typeName: "xxx.v1.ServiceName", methods: { ... } } 服务对象。
+	// Match VarName = { typeName: "xxx.v1.ServiceName", methods: { ... } } service objects.
 	serviceRe := regexp.MustCompile(`([\w$]+)\s*=\s*\{\s*typeName:\s*"([\w.]+)"\s*,\s*methods:\s*\{`)
 
 	matches := serviceRe.FindAllStringSubmatchIndex(text, -1)
@@ -111,7 +111,7 @@ func extractServices(text string, moduleStarts []int) []Service {
 		appendService(varName, typeName, match[0], match[1]-1)
 	}
 
-	// 部分 bundle 把服务描述符直接放入数组，不预先赋给变量。
+	// Some bundles put service descriptors directly into an array without assigning them to a variable first.
 	anonymousServiceRe := regexp.MustCompile(`\{\s*typeName:\s*["']([\w.]+)["']\s*,\s*methods:\s*\{`)
 	for _, match := range anonymousServiceRe.FindAllStringSubmatchIndex(text, -1) {
 		typeName := text[match[2]:match[3]]
@@ -121,11 +121,11 @@ func extractServices(text string, moduleStarts []int) []Service {
 	return services
 }
 
-// extractMethods 解析服务对象中的 RPC 方法列表。
+// extractMethods parses the RPC method list in a service object.
 func extractMethods(methodsText string) []Method {
 	var methods []Method
 
-	// 匹配包含方法名、输入、输出和调用类型的方法对象。
+	// Match method objects carrying name, input, output, and call kind.
 	methodRe := regexp.MustCompile(`\w+:\s*\{\s*name:\s*"([^"]+)"\s*,\s*I:\s*([\w$.]+)\s*,\s*O:\s*([\w$.]+)\s*,\s*kind:\s*[\w$.]+\.(Unary|ServerStreaming|ClientStreaming|BiDiStreaming)`)
 
 	matches := methodRe.FindAllStringSubmatch(methodsText, -1)
@@ -142,7 +142,7 @@ func extractMethods(methodsText string) []Method {
 	return methods
 }
 
-// findMatchingBrace 查找花括号块的结束位置。
+// findMatchingBrace finds the end of a brace block.
 func findMatchingBrace(text string, start int) int {
 	depth := 0
 	for i := start; i < len(text); i++ {
@@ -158,9 +158,9 @@ func findMatchingBrace(text string, start int) int {
 	return -1
 }
 
-// extractEnumValues 从数组起点解析枚举值。
+// extractEnumValues parses enum values starting at the array.
 func extractEnumValues(text string, start int) []EnumValue {
-	// 查找数组的配对结束括号。
+	// Find the closing bracket paired with the array.
 	depth := 0
 	end := start
 	for i := start; i < len(text); i++ {

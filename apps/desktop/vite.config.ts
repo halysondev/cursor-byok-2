@@ -1,7 +1,6 @@
 import { codeInspectorPlugin } from "code-inspector-plugin";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { staticI18nPlugin } from "./plugins/static-i18n-plugin.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -9,7 +8,6 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async ({ command }) => ({
   base: "/__byok-api__/",
   plugins: [
-    staticI18nPlugin(),
     ...(command === "serve"
       ? [codeInspectorPlugin({
           bundler: "vite",

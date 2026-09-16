@@ -1,9 +1,9 @@
-// extractor_test.go 验证压缩 bundle 的字段、别名、服务和合并提取行为。
+// extractor_test.go verifies field, alias, service, and merge extraction behavior on minified bundles.
 package main
 
 import "testing"
 
-// TestParseFieldObjectSupportsShorthandType 验证字段类型简写可以解析。
+// TestParseFieldObjectSupportsShorthandType verifies shorthand field types parse.
 func TestParseFieldObjectSupportsShorthandType(t *testing.T) {
 	field, err := parseFieldObject(`{no:4,name:"file_not_found",kind:"message",T,oneof:"result"}`)
 	if err != nil {
@@ -14,7 +14,7 @@ func TestParseFieldObjectSupportsShorthandType(t *testing.T) {
 	}
 }
 
-// TestWebpackExportAliasResolvesServiceMessageType 验证 Webpack 导出别名可解析服务消息。
+// TestWebpackExportAliasResolvesServiceMessageType verifies Webpack export aliases resolve service message types.
 func TestWebpackExportAliasResolvesServiceMessageType(t *testing.T) {
 	const bundle = `
 1:(e,t,n)=>{
@@ -57,7 +57,7 @@ func TestWebpackExportAliasResolvesServiceMessageType(t *testing.T) {
 	}
 }
 
-// TestResolverPrefersExpectedKindOverCurrentPackage 验证类型类别优先于当前包候选。
+// TestResolverPrefersExpectedKindOverCurrentPackage verifies the expected kind wins over a same-package candidate.
 func TestResolverPrefersExpectedKindOverCurrentPackage(t *testing.T) {
 	resolver := &TypeResolver{bySymbol: map[string][]symbolDef{
 		"nt": {
@@ -75,7 +75,7 @@ func TestResolverPrefersExpectedKindOverCurrentPackage(t *testing.T) {
 	}
 }
 
-// TestModernFactorySyntaxExtractsInAppAdServiceTypes 验证现代工厂语法提取完整服务类型。
+// TestModernFactorySyntaxExtractsInAppAdServiceTypes verifies modern factory syntax extracts complete service types.
 func TestModernFactorySyntaxExtractsInAppAdServiceTypes(t *testing.T) {
 	const bundle = `
 42:(e,t,n)=>{
@@ -116,7 +116,7 @@ func TestModernFactorySyntaxExtractsInAppAdServiceTypes(t *testing.T) {
 	}
 }
 
-// TestAssignmentAliasResolvesStandardProtobufType 验证赋值别名解析标准协议类型。
+// TestAssignmentAliasResolvesStandardProtobufType verifies assignment aliases resolve standard protobuf types.
 func TestAssignmentAliasResolvesStandardProtobufType(t *testing.T) {
 	const bundle = `
 1:(e,t,n)=>{
@@ -135,7 +135,7 @@ func TestAssignmentAliasResolvesStandardProtobufType(t *testing.T) {
 	}
 }
 
-// TestDeclarationCoverageReportsUnparsedTypesAndIgnoresGoogleTypes 验证覆盖率忽略标准类型并报告遗漏。
+// TestDeclarationCoverageReportsUnparsedTypesAndIgnoresGoogleTypes verifies coverage ignores standard types and reports misses.
 func TestDeclarationCoverageReportsUnparsedTypesAndIgnoresGoogleTypes(t *testing.T) {
 	const bundle = `
 var Request=n.makeMessageType("aiserver.v1.Request",()=>[]);
@@ -155,7 +155,7 @@ var Service={typeName:"aiserver.v1.TestService",methods:{}};
 	}
 }
 
-// TestExtractServicesSupportsAnonymousDescriptors 验证匿名服务描述符可以提取。
+// TestExtractServicesSupportsAnonymousDescriptors verifies anonymous service descriptors can be extracted.
 func TestExtractServicesSupportsAnonymousDescriptors(t *testing.T) {
 	const bundle = `services.push({typeName:"aiserver.v1.FileSyncService",methods:{sync:{name:"Sync",I:Request,O:Response,kind:n.MethodKind.Unary}}})`
 	services := extractServices(bundle, nil)
@@ -167,7 +167,7 @@ func TestExtractServicesSupportsAnonymousDescriptors(t *testing.T) {
 	}
 }
 
-// TestMergeMessagesPrefersPrimaryBundleAndKeepsSupplementalTypes 验证合并优先主 bundle 并保留补充类型。
+// TestMergeMessagesPrefersPrimaryBundleAndKeepsSupplementalTypes verifies merging prefers the primary bundle and keeps supplemental types.
 func TestMergeMessagesPrefersPrimaryBundleAndKeepsSupplementalTypes(t *testing.T) {
 	primary := Message{
 		TypeName: "aiserver.v1.Shared",

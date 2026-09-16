@@ -26,7 +26,7 @@ pub(crate) struct ConversationDependencies {
     pub provider: Arc<dyn Provider>,
     pub compiler: PromptCompiler,
     pub web_cache: WebCache,
-    /// 本地 rules 服务的 md 存储目录;编译请求上下文时合并其中的规则。
+    /// The local rules service's md storage directory; its rules are merged when compiling the request context.
     pub local_rules_dir: Option<std::path::PathBuf>,
 }
 

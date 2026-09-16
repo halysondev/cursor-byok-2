@@ -108,7 +108,6 @@ export function installDemoApi() {
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     const body = await readBody(input, init);
 
-    if (path === "/promotions") return json({ slots: [] });
     if (path === "/models" && method === "GET") return json(models);
     if (path === "/models" && method === "POST") return json(models);
     if (path === "/models/order") return json(models);
@@ -169,6 +168,8 @@ export function installDemoApi() {
     }
     if (path === "/settings/desktop" && method === "GET") return json({ silent_start: false, show_dock_icon: true });
     if (path === "/settings/desktop") return json(body);
+    if (path === "/settings/pricing" && method === "GET") return json({ input_per_million: 5.0, output_per_million: 25.0, cache_read_per_million: 0.5, cache_write_per_million: 6.25 });
+    if (path === "/settings/pricing") return json(body);
     if (path === "/desktop/open-external-url") {
       const target = (body as { url?: string } | null)?.url;
       if (target) {
@@ -177,8 +178,6 @@ export function installDemoApi() {
       }
       return empty();
     }
-    if (path.endsWith("/dismissals")) return empty();
-
     return json({ message: `Unhandled demo endpoint: ${method} ${path}` }, 404);
   };
 }
@@ -201,7 +200,7 @@ function createModel({ hash, order, name, type, url, modelId, endpoint = "/v1/re
     base_url: url,
     use_full_url: false,
     api_key: "demo-key",
-    tooltip_data: `${name} Mock 通道`,
+    tooltip_data: `${name} Mock channel`,
     model_id: modelId,
     reasoning_effort: type === "openai" ? "high" : null,
     openai_endpoint: type === "openai" ? endpoint : "",
@@ -259,7 +258,7 @@ function createSeries(count: number, step: number, end: number): OverviewTokenUs
     const wave = 0.72 + ((index * 17) % 31) / 50;
     return {
       bucket_start_ms: end - (count - index) * step,
-      // input : cache_read = 1 : 99，使默认口径缓存命中率恰为 99%
+      // input : cache_read = 1 : 99, so the default cache hit rate is exactly 99%
       input_tokens: Math.round(800 * wave),
       cache_read_tokens: Math.round(79_200 * wave),
       cache_write_tokens: Math.round(7_500 * wave),

@@ -14,7 +14,7 @@ use cursor_server::{
 };
 use prost::Message;
 
-// 测试侧的镜像消息定义,同时充当 wire 兼容性检查。
+// Test-side mirror message definitions that double as a wire-compatibility check.
 #[derive(Clone, PartialEq, Message)]
 struct AddRequest {
     #[prost(string, tag = "1")]
@@ -101,8 +101,8 @@ async fn decode<M: Message + Default>(response: Response<Body>) -> M {
     M::decode(body.as_ref()).unwrap()
 }
 
-/// 无凭据请求上游必然失败(网络错误或 401),四个接口全部走本地降级,
-/// 覆盖 md 持久化、离线日志压缩与增删改查闭环。
+/// Requests without credentials always fail upstream (network error or 401), so all four
+/// endpoints exercise the local fallback: md persistence, offline-log compaction, and CRUD.
 #[tokio::test]
 async fn offline_crud_round_trip_persists_markdown() {
     let (_store_dir, store) = fixtures::temp_store().await;
@@ -111,7 +111,7 @@ async fn offline_crud_round_trip_persists_markdown() {
     let rules_root = rules_dir.path().join("rules");
     let service = KnowledgeService::with_root(rules_root.clone()).unwrap();
 
-    // Add:得到本地临时 id,md 文件落盘。
+    // Add: returns a local temporary id and writes the md file to disk.
     let response = knowledge::add(
         Extension(upstream.clone()),
         Extension(service.clone()),
@@ -135,7 +135,7 @@ async fn offline_crud_round_trip_persists_markdown() {
         "always answer in haiku"
     );
 
-    // List:本地缓存返回刚写入的规则。
+    // List: the local cache returns the rule just written.
     let response = knowledge::list(
         Extension(upstream.clone()),
         Extension(service.clone()),
@@ -149,7 +149,7 @@ async fn offline_crud_round_trip_persists_markdown() {
     assert_eq!(listed.all_results[0].id, added.id);
     assert_eq!(listed.all_results[0].title, "haiku rule");
 
-    // Update:内容与标题都更新到 md 与元数据。
+    // Update: content and title are updated in both the md file and metadata.
     let response = knowledge::update(
         Extension(upstream.clone()),
         Extension(service.clone()),
@@ -168,7 +168,7 @@ async fn offline_crud_round_trip_persists_markdown() {
         "always answer in sonnets"
     );
 
-    // Remove:文件删除,列表为空。
+    // Remove: the file is deleted and the list is empty.
     let response = knowledge::remove(
         Extension(upstream.clone()),
         Extension(service.clone()),

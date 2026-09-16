@@ -62,7 +62,7 @@ impl PluginDataStore {
         let _guard = lock.lock().await;
         self.write_locked(&path, key, value)
             .await
-            // 带上具体路径,Windows 上的拒绝访问才能定位到是哪一步。
+            // Include the concrete path so an access-denied error on Windows pinpoints which step failed.
             .map_err(|error| {
                 Error::Config(format!(
                     "plugin data write failed at {}: {error}",
@@ -71,8 +71,9 @@ impl PluginDataStore {
             })
     }
 
-    /// 全程使用同步 IO 在阻塞线程完成:tokio 异步文件的关闭是延迟的,
-    /// 替换前句柄可能仍被本进程持有;同步写入保证替换时句柄已确定关闭。
+    /// Uses synchronous IO on a blocking thread throughout: tokio's async file close is
+    /// deferred, so the handle may still be held by this process at replace time; writing
+    /// synchronously guarantees the handle is definitely closed by then.
     async fn write_locked(&self, path: &Path, key: &str, value: &serde_json::Value) -> Result<()> {
         let directory = path
             .parent()
@@ -82,8 +83,8 @@ impl PluginDataStore {
         let target = path.to_owned();
         let bytes = serde_json::to_vec_pretty(value)?;
         tokio::task::spawn_blocking(move || {
-            // Windows 上杀软或索引器会短暂锁住新建文件,任何一步都可能
-            // 拒绝访问,因此把整个序列作为一个整体重试。
+            // Antivirus or indexer software on Windows can briefly lock newly created files
+            // and deny access at any step, so the whole sequence is retried as one unit.
             let mut attempts = 0;
             loop {
                 match write_once(&directory, &temporary, &target, &bytes) {
@@ -141,8 +142,9 @@ impl PluginDataStore {
     }
 }
 
-/// 单次完整写入:建目录、写临时文件、落盘、原子替换。
-/// 失败时返回失败步骤的标签,供上层区分重试与报错。
+/// One complete write: create the directory, write a temp file, flush it, then atomically
+/// replace. On failure it returns the failed step's label so callers can tell a retryable
+/// step from a hard error.
 fn write_once(
     directory: &Path,
     temporary: &Path,
@@ -160,7 +162,7 @@ fn write_once(
         .map_err(|error| ("sync temporary file", error))?;
     drop(file);
     let _ = set_file_permissions(temporary);
-    // Windows 的 rename 不覆盖已存在文件,先删除旧文件。
+    // rename on Windows does not overwrite an existing file, so delete the old one first.
     #[cfg(windows)]
     match std::fs::remove_file(target) {
         Ok(()) => {}
@@ -172,8 +174,9 @@ fn write_once(
     Ok(())
 }
 
-/// Windows 下拒绝访问(5)与共享冲突(32)通常是杀软或索引器的
-/// 瞬时锁定,值得重试;其余错误与其他平台一律直接失败。
+/// On Windows, access denied (5) and sharing violation (32) are usually transient locks
+/// from antivirus or indexers and are worth retrying; every other error, and every error
+/// on other platforms, fails immediately.
 fn transient(error: &std::io::Error) -> bool {
     #[cfg(windows)]
     {

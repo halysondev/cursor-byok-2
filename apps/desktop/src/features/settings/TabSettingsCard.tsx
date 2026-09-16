@@ -27,61 +27,61 @@ export function TabSettingsCard({
   onSave: () => void;
 }) {
   const modeLabel = (mode: TabMode) => {
-    if (mode === "public") return t("使用公益服务");
-    if (mode === "direct") return t("直连");
-    return t("自定义");
+    if (mode === "public") return "Use public service";
+    if (mode === "direct") return "Direct";
+    return "Custom";
   };
   const action = editing ? (
     <div className={styles.actionGroup}>
-      <Button size="small" disabled={saving} onClick={onCancel}>{t("取消")}</Button>
-      <Button variant="primary" size="small" disabled={saving} onClick={onSave}>{saving ? t("保存中…") : t("保存")}</Button>
+      <Button size="small" disabled={saving} onClick={onCancel}>{"Cancel"}</Button>
+      <Button variant="primary" size="small" disabled={saving} onClick={onSave}>{saving ? "Saving…" : "Save"}</Button>
     </div>
   ) : (
-    <button type="button" className={styles.headerAction} disabled={!settings} onClick={onEdit}>{t("编辑")}</button>
+    <button type="button" className={styles.headerAction} disabled={!settings} onClick={onEdit}>{"Edit"}</button>
   );
 
   return <TitledCard
-    title={<div className={styles.title}><Icon src={cursorIconUrl} size="1.1em" /><span>{t("TAB 设置")}</span></div>}
+    title={<div className={styles.title}><Icon src={cursorIconUrl} size="1.1em" /><span>{"TAB settings"}</span></div>}
     action={action}
   >
     <div className={styles.content}>
       {editing ? <>
         <div className={styles.row}>
           <div className={styles.description}>
-            <strong>{t("TAB 选择")}</strong>
-            <small>{t("控制 Cursor TAB 相关接口的连接方式。")}</small>
+            <strong>{"TAB connection"}</strong>
+            <small>{"Choose how Cursor connects to TAB endpoints."}</small>
           </div>
           <div className={styles.control}><Select
             value={draft.mode}
-            ariaLabel={t("TAB 选择")}
+            ariaLabel={"TAB connection"}
             options={[
-              { value: "public", label: t("使用公益服务") },
-              { value: "direct", label: t("直连") },
-              { value: "custom", label: t("自定义") },
+              { value: "public", label: "Use public service" },
+              { value: "direct", label: "Direct" },
+              { value: "custom", label: "Custom" },
             ]}
             onChange={(mode) => onDraftChange({ ...draft, mode: mode as TabMode })}
           /></div>
         </div>
         {draft.mode === "custom" && <div className={styles.row}>
           <div className={styles.description}>
-            <strong>{t("TAB 服务地址")}</strong>
-            <small>{t("原接口路径会追加到此服务地址。")}</small>
+            <strong>{"TAB service address"}</strong>
+            <small>{"The original endpoint path is appended to this service address."}</small>
           </div>
           <div className={styles.control}><TextInput
             value={draft.address}
             placeholder="https://tab.leokun.cn"
-            aria-label={t("TAB 服务地址")}
+            aria-label={"TAB service address"}
             onChange={(event) => onDraftChange({ ...draft, address: event.target.value })}
             onKeyDown={(event) => { if (event.key === "Enter") onSave(); }}
           /></div>
         </div>}
       </> : <>
         <div className={styles.row}>
-          <strong>{t("TAB 选择")}</strong>
-          <span className={styles.value}>{settings ? modeLabel(settings.mode) : t("加载中…")}</span>
+          <strong>{"TAB connection"}</strong>
+          <span className={styles.value}>{settings ? modeLabel(settings.mode) : "Loading…"}</span>
         </div>
         {settings?.mode === "custom" && <div className={styles.row}>
-          <strong>{t("TAB 服务地址")}</strong>
+          <strong>{"TAB service address"}</strong>
           <span className={styles.value}>{settings.address}</span>
         </div>}
       </>}

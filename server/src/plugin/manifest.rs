@@ -14,11 +14,11 @@ pub struct PluginManifest {
     pub api_version: u32,
     pub id: String,
     pub name: String,
-    /// 插件自身版本;内置插件预装时以它为缓存键决定是否重新落盘。
+    /// The plugin's own version; used as the cache key when preinstalling built-in plugins to decide whether to rewrite them.
     pub version: String,
     #[serde(default)]
     pub author: Option<String>,
-    /// 插件要求的最低应用版本;应用过旧时插件被忽略。
+    /// The minimum app version the plugin requires; older apps ignore the plugin.
     #[serde(default)]
     pub min_app_version: Option<String>,
     pub icon: String,
@@ -66,7 +66,7 @@ impl PluginManifest {
     }
 }
 
-/// 解析 semver 的核心三段(忽略预发布/构建后缀),格式非法返回 None。
+/// Parses the three core semver segments (ignoring prerelease/build suffixes); returns None for malformed input.
 pub(super) fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
     let core = value.split(['-', '+']).next()?;
     let mut parts = core.split('.');

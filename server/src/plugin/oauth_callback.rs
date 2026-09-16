@@ -3,7 +3,6 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{
     extract::{Query, State},
-    http::HeaderMap,
     response::Html,
     routing::get,
     Router,
@@ -106,52 +105,36 @@ pub(super) async fn bind(
 
 async fn handle_callback(
     State(state): State<CallbackState>,
-    headers: HeaderMap,
     Query(query): Query<CallbackQuery>,
 ) -> Html<String> {
-    let locale = callback_locale(&headers);
     if query.state.as_deref() != Some(state.expected_state.as_str()) {
         return Html(render_page(
             &state,
-            locale,
             false,
-            Some(localized(
-                locale,
-                "授权状态不匹配，请返回应用后重试。",
-                "Authorization state did not match. Return to the app and try again.",
-            )),
+            Some("Authorization state did not match. Return to the app and try again."),
         ));
     }
 
     let result = match query.code.filter(|code| !code.trim().is_empty()) {
         Some(code) => Ok(code),
-        None => Err(query.error_description.or(query.error).unwrap_or_else(|| {
-            localized(locale, "授权被取消。", "Authorization was cancelled.").to_owned()
-        })),
+        None => Err(query
+            .error_description
+            .or(query.error)
+            .unwrap_or_else(|| "Authorization was cancelled.".to_owned())),
     };
     let Some(sender) = state.sender.lock().await.take() else {
         return Html(render_page(
             &state,
-            locale,
             false,
-            Some(localized(
-                locale,
-                "该授权回调已被使用。",
-                "This authorization callback has already been used.",
-            )),
+            Some("This authorization callback has already been used."),
         ));
     };
     let (response, completion) = oneshot::channel();
     if sender.send(CallbackRequest { result, response }).is_err() {
         return Html(render_page(
             &state,
-            locale,
             false,
-            Some(localized(
-                locale,
-                "授权会话已结束。",
-                "The authorization session has ended.",
-            )),
+            Some("The authorization session has ended."),
         ));
     }
 
@@ -160,53 +143,30 @@ async fn handle_callback(
     match outcome {
         Ok(Ok(outcome)) => Html(render_page(
             &state,
-            locale,
             outcome.success,
             outcome.message.as_deref(),
         )),
         _ => Html(render_page(
             &state,
-            locale,
             false,
-            Some(localized(
-                locale,
-                "添加资源超时，请返回应用后重试。",
-                "Adding the resource timed out. Return to the app and try again.",
-            )),
+            Some("Adding the resource timed out. Return to the app and try again."),
         )),
     }
 }
 
-fn callback_locale(headers: &HeaderMap) -> &'static str {
-    headers
-        .get(axum::http::header::ACCEPT_LANGUAGE)
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| value.to_ascii_lowercase().starts_with("zh"))
-        .map(|_| "zh-CN")
-        .unwrap_or("en-US")
-}
-
-fn localized<'a>(locale: &str, chinese: &'a str, english: &'a str) -> &'a str {
-    if locale == "zh-CN" {
-        chinese
-    } else {
-        english
-    }
-}
-
-fn localized_value(value: &serde_json::Value, locale: &str) -> String {
+fn localized_value(value: &serde_json::Value) -> String {
     value
         .as_str()
         .map(str::to_owned)
         .or_else(|| {
             value
-                .get(locale)
+                .get("en-US")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
         })
         .or_else(|| {
             value
-                .get("en-US")
+                .get("en")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
         })
@@ -217,7 +177,7 @@ fn localized_value(value: &serde_json::Value, locale: &str) -> String {
                 .find_map(serde_json::Value::as_str)
                 .map(str::to_owned)
         })
-        .unwrap_or_else(|| localized(locale, "资源", "resource").to_owned())
+        .unwrap_or_else(|| "resource".to_owned())
 }
 
 fn escape_html(value: &str) -> String {
@@ -229,45 +189,26 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn render_page(
-    state: &CallbackState,
-    locale: &str,
-    success: bool,
-    message: Option<&str>,
-) -> String {
+fn render_page(state: &CallbackState, success: bool, message: Option<&str>) -> String {
     let plugin_name = escape_html(&state.plugin_name);
     let plugin_icon = escape_html(&state.plugin_icon);
-    let resource_name = escape_html(&localized_value(&state.resource_name, locale));
+    let resource_name = escape_html(&localized_value(&state.resource_name));
     let title = if success {
-        localized(locale, "资源添加成功", "Resource added")
+        "Resource added"
     } else {
-        localized(locale, "资源添加失败", "Could not add resource")
+        "Could not add resource"
     };
     let detail = message.map(escape_html).unwrap_or_else(|| {
         if success {
-            localized(
-                locale,
-                "已为该插件添加资源。",
-                "A resource has been added for this plugin.",
-            )
-            .to_owned()
+            "A resource has been added for this plugin.".to_owned()
         } else {
-            localized(
-                locale,
-                "请返回应用后重试。",
-                "Return to the app and try again.",
-            )
-            .to_owned()
+            "Return to the app and try again.".to_owned()
         }
     });
-    let close = localized(
-        locale,
-        "您现在可以关闭本页面并返回 Cursor BYOK。",
-        "You can now close this page and return to Cursor BYOK.",
-    );
+    let close = "You can now close this page and return to Cursor BYOK.";
     format!(
         r#"<!doctype html>
-<html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">
 <title>{title}</title><style>
 :root{{color-scheme:light dark}}body{{margin:0;min-height:100vh;display:grid;place-items:center;font:15px system-ui,-apple-system,sans-serif;background:Canvas;color:CanvasText}}main{{width:min(420px,calc(100vw - 48px));text-align:center}}img{{width:56px;height:56px;object-fit:contain}}h1{{font-size:20px;margin:16px 0 6px}}.plugin{{opacity:.72;margin-bottom:24px}}.resource{{font-weight:600;margin:8px 0}}.detail{{opacity:.82;line-height:1.6}}.close{{opacity:.62;margin-top:24px;font-size:13px}}
@@ -289,7 +230,7 @@ mod tests {
             sender: Arc::new(Mutex::new(None)),
             shutdown: CancellationToken::new(),
         };
-        let page = render_page(&state, "en-US", true, None);
+        let page = render_page(&state, true, None);
         assert!(page.contains("&lt;plugin&gt;"));
         assert!(page.contains("Accounts &amp; keys"));
         assert!(!page.contains("<plugin>"));

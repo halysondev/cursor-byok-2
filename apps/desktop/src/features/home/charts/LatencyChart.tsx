@@ -15,7 +15,7 @@ export function LatencyChart({ calls }: { calls: LlmCall[] }) {
     series: [
       { name: "TTFR", type: "line", smooth: true, symbol: "none", data: points.map((call) => call.ttfr_ms ?? 0) },
       { name: "TTFT", type: "line", smooth: true, symbol: "none", data: points.map((call) => call.ttft_ms ?? 0) },
-      { name: t("总耗时"), type: "line", smooth: true, symbol: "none", data: points.map((call) => call.duration_ms ?? 0) },
+      { name: "Total duration", type: "line", smooth: true, symbol: "none", data: points.map((call) => call.duration_ms ?? 0) },
     ],
   };
   return <EChart option={option} />;

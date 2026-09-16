@@ -1,10 +1,10 @@
 import type { JsonValue, PluginContext } from "../plugin.ts";
 import type { LlmContentPart, LlmRequest, ModelEvent, ProviderOutput } from "../provider.ts";
 
-/** 本协议产生的回放状态种类;与宿主内置 Responses Provider 一致,可互相回放。 */
+/** Replay-state kinds produced by this protocol; identical to the host's built-in Responses Provider, so they can replay each other. */
 export const REPLAY_KIND = "openai_responses";
 
-/** 上游返回非 2xx 时抛出,携带完整响应体供调用方分类。 */
+/** Thrown when upstream returns non-2xx, carrying the full response body so callers can classify it. */
 export class HttpError extends Error {
   constructor(readonly status: number, readonly body: string) {
     super(`HTTP ${status}: ${body}`);
@@ -16,7 +16,7 @@ export type OpenAiResponsesCall = {
   model: string;
   request: LlmRequest;
   headers?: Record<string, string>;
-  /** 最后合并进请求体,如 { store: false }。 */
+  /** Merged into the request body last, e.g. { store: false }. */
   extraBody?: Record<string, JsonValue>;
 };
 
@@ -123,9 +123,9 @@ export function buildResponsesBody(call: OpenAiResponsesCall): Record<string, Js
       ...(reasoning.effort !== null ? { effort: reasoning.effort } : {}),
     };
   }
-  // OpenAI 的规范 tier 值是 priority;"fast" 只是客户端别名,上游不接受。
+  // OpenAI's canonical tier value is priority; "fast" is only a client alias and upstream rejects it.
   if (call.request.latency === "fast") body.service_tier = "priority";
-  // 会话级缓存键把请求钉到同一缓存分片,前缀缓存才能稳定命中。
+  // The conversation-level cache key pins requests to the same cache shard so the prefix cache hits reliably.
   if (call.request.cacheKey !== null) body.prompt_cache_key = call.request.cacheKey;
   return { ...body, ...call.extraBody };
 }
@@ -224,9 +224,10 @@ async function readBody(lines: AsyncIterable<string>): Promise<string> {
 }
 
 /**
- * 执行一次 Responses API 流式调用,发出与宿主统一事件集一致的标准化事件,
- * 包括文本/思考边界、工具参数增量与加密推理回放状态。非 2xx 响应抛出
- * `HttpError`,流内失败抛出 `Error`,由调用方分类额度与授权问题。
+ * Runs one Responses API streaming call, emitting normalized events matching the host's
+ * unified event set, including text/thinking boundaries, tool-argument deltas, and the
+ * encrypted-reasoning replay state. A non-2xx response throws `HttpError`; a mid-stream
+ * failure throws `Error`. Callers classify quota and authorization problems.
  */
 export async function streamOpenAiResponses(
   call: OpenAiResponsesCall,
@@ -267,7 +268,7 @@ export async function streamOpenAiResponses(
       output.emit({ type: "text-end" });
     }
   };
-  // 流式增量可能落后于最终文本;补发缺失的后缀。
+  // Streamed deltas may lag behind the final text; emit the missing suffix.
   const reconcileText = (finalText: string) => {
     if (finalText.startsWith(streamedText) && finalText.length > streamedText.length) {
       if (!textOpen) {
@@ -379,7 +380,7 @@ export async function streamOpenAiResponses(
       }
       case "response.function_call_arguments.done": {
         const snapshot = text(value.arguments);
-        // 空快照不代表结束;等 output_item.done 收尾。
+        // An empty snapshot is not the end; wait for output_item.done to wrap up.
         const args: ToolArguments = snapshot === null || snapshot === "" ? { kind: "none" } : { kind: "snapshot", snapshot };
         const done = snapshot !== null && snapshot !== "";
         for (const event of updateTool(requiredIndex(value), null, args, done, tools)) {

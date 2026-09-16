@@ -1,4 +1,4 @@
-// generator.go 计算跨包依赖并为各协议包准备完整声明集合。
+// generator.go computes cross-package dependencies and prepares a complete declaration set per protocol package.
 package main
 
 import (
@@ -6,11 +6,11 @@ import (
 	"os"
 )
 
-// generateProtos 按协议包聚合声明并生成对应文件。
+// generateProtos aggregates declarations by protocol package and generates the files.
 func generateProtos(messages []Message, enums []Enum, services []Service, resolver *TypeResolver, outputDir string) {
 	os.MkdirAll(outputDir, 0755)
 
-	// 按协议包聚合声明。
+	// Aggregate declarations by protocol package.
 	packages := make(map[string]struct {
 		messages []Message
 		enums    []Enum
@@ -35,7 +35,7 @@ func generateProtos(messages []Message, enums []Enum, services []Service, resolv
 		packages[svc.Package] = pkg
 	}
 
-	// 建立跨包复制使用的全局类型索引。
+	// Build the global type index used for cross-package copying.
 	allMessages := make(map[string]*Message)
 	allEnums := make(map[string]*Enum)
 
@@ -53,23 +53,23 @@ func generateProtos(messages []Message, enums []Enum, services []Service, resolv
 		}
 	}
 
-	// 每轮生成前重置已复制类型索引。
+	// Reset the copied-type index before each generation round.
 	copiedTypes = make(map[string]map[string]string)
 
 	for pkgName, pkg := range packages {
-		// Google 标准包直接使用官方协议文件。
+		// Google standard packages use the official proto files directly.
 		if isGooglePkg(pkgName) {
-			fmt.Printf("跳过: %s (使用官方 proto 文件)\n", pkgName)
+			fmt.Printf("Skipped: %s (using official proto files)\n", pkgName)
 			continue
 		}
 
-		// 把当前包引用的外部类型复制到本地。
+		// Copy external types referenced by the current package locally.
 		augmentedPkg := copyAllExternalTypes(pkgName, pkg, resolver, allMessages, allEnums)
 		generateProtoFile(pkgName, augmentedPkg.messages, augmentedPkg.enums, pkg.services, resolver, outputDir)
 	}
 }
 
-// copyAllExternalTypes 递归复制当前包引用的全部外部类型。
+// copyAllExternalTypes recursively copies every external type the current package references.
 func copyAllExternalTypes(pkgName string, pkg struct {
 	messages []Message
 	enums    []Enum
@@ -83,11 +83,11 @@ func copyAllExternalTypes(pkgName string, pkg struct {
 		copiedTypes[pkgName] = make(map[string]string)
 	}
 
-	// 建立当前包已有类型集合，并登记本地名称供字段解析使用。
+	// Build the set of types already in the current package and register local names for field resolution.
 	localTypes := make(map[string]bool)
 	for _, msg := range pkg.messages {
 		localTypes[msg.ShortName] = true
-		// 空来源名表示该类型原本就在当前包。
+		// An empty source name means the type already lives in the current package.
 		if copiedTypes[pkgName][msg.ShortName] == "" {
 			copiedTypes[pkgName][msg.ShortName] = "local:" + msg.TypeName
 		}
@@ -99,7 +99,7 @@ func copyAllExternalTypes(pkgName string, pkg struct {
 		}
 	}
 
-	// 结果先保留当前包原始声明。
+	// The result keeps the current package's original declarations first.
 	result := struct {
 		messages []Message
 		enums    []Enum
@@ -112,9 +112,9 @@ func copyAllExternalTypes(pkgName string, pkg struct {
 
 	totalCopied := 0
 
-	// 持续迭代，直到不再发现新的外部依赖。
+	// Keep iterating until no new external dependencies are found.
 	for round := 1; ; round++ {
-		// 收集当前消息中的外部类型引用。
+		// Collect external type references in the current messages.
 		neededTypes := make(map[string]bool)
 
 		for _, msg := range result.messages {
@@ -130,7 +130,7 @@ func copyAllExternalTypes(pkgName string, pkg struct {
 			}
 		}
 
-		// 复制本轮新增依赖类型。
+		// Copy the dependency types added this round.
 		copiedThisRound := 0
 		for typeName := range neededTypes {
 			refPkg, shortName := parseTypeName(typeName)
@@ -138,58 +138,58 @@ func copyAllExternalTypes(pkgName string, pkg struct {
 				continue
 			}
 
-			// 已存在于本地时无需重复复制。
+			// No need to copy again when it already exists locally.
 			if localTypes[shortName] {
 				continue
 			}
 
-			// 复制消息声明。
+			// Copy the message declaration.
 			if msg, ok := allMessages[typeName]; ok {
 				msgCopy := *msg
 				msgCopy.Package = pkgName
-				// 保留原始完整类型名，用于生成来源注释。
+				// Keep the original full type name for generating the origin comment.
 				result.messages = append(result.messages, msgCopy)
-				copiedTypes[pkgName][shortName] = typeName // 保存原始完整类型名。
+				copiedTypes[pkgName][shortName] = typeName // keep the original full type name.
 				localTypes[shortName] = true
 				copiedThisRound++
-				fmt.Printf("  [%s] 轮%d 复制: %s\n", pkgName, round, typeName)
+				fmt.Printf("  [%s] round %d copy: %s\n", pkgName, round, typeName)
 			} else if enum, ok := allEnums[typeName]; ok {
-				// 复制枚举声明。
+				// Copy the enum declaration.
 				enumCopy := *enum
 				enumCopy.Package = pkgName
 				result.enums = append(result.enums, enumCopy)
 				copiedTypes[pkgName][shortName] = typeName
 				localTypes[shortName] = true
 				copiedThisRound++
-				fmt.Printf("  [%s] 轮%d 复制枚举: %s\n", pkgName, round, typeName)
+				fmt.Printf("  [%s] round %d copy enum: %s\n", pkgName, round, typeName)
 			} else {
-				// 未找到声明时仍登记本地引用，兼容提取结果缺少但 bundle 实际存在的类型。
+				// Register the local reference even when no declaration was found, tolerating types that exist in the bundle but were missed by extraction.
 				copiedTypes[pkgName][shortName] = typeName
 				localTypes[shortName] = true
-				fmt.Printf("  [%s] 轮%d 警告: 类型未找到 %s，标记为本地引用\n", pkgName, round, typeName)
+				fmt.Printf("  [%s] round %d warning: type %s not found, marked as local reference\n", pkgName, round, typeName)
 			}
 		}
 
 		totalCopied += copiedThisRound
 
 		if copiedThisRound == 0 {
-			break // 没有新增依赖时结束迭代。
+			break // Stop when no new dependencies were added.
 		}
 
 		if round > 20 {
-			fmt.Printf("  [%s] 警告: 复制轮次超过20，可能存在问题\n", pkgName)
+			fmt.Printf("  [%s] warning: copy rounds exceeded 20, possible problem\n", pkgName)
 			break
 		}
 	}
 
 	if totalCopied > 0 {
-		fmt.Printf("  [%s] 共复制 %d 个外部类型\n", pkgName, totalCopied)
+		fmt.Printf("  [%s] copied %d external types total\n", pkgName, totalCopied)
 	}
 
 	return result
 }
 
-// collectFieldRefsSimple 收集单个字段直接引用的外部类型。
+// collectFieldRefsSimple collects the external types a single field references directly.
 func collectFieldRefsSimple(f Field, currentPkg string, preferredPkg string, contextPos int, contextModuleStart int, resolver *TypeResolver,
 	neededTypes map[string]bool, localTypes map[string]bool) {
 
@@ -221,7 +221,7 @@ func collectFieldRefsSimple(f Field, currentPkg string, preferredPkg string, con
 			continue
 		}
 
-		// 已在当前包中的类型无需收集。
+		// Types already in the current package need no collection.
 		if localTypes[shortName] {
 			continue
 		}
@@ -230,7 +230,7 @@ func collectFieldRefsSimple(f Field, currentPkg string, preferredPkg string, con
 	}
 }
 
-// collectMethodRefsSimple 收集服务方法输入或输出引用的外部类型。
+// collectMethodRefsSimple collects the external types a service method's input or output references.
 func collectMethodRefsSimple(ref string, currentPkg string, contextPos int, contextModuleStart int, resolver *TypeResolver,
 	neededTypes map[string]bool, localTypes map[string]bool) {
 
@@ -251,22 +251,22 @@ func collectMethodRefsSimple(ref string, currentPkg string, contextPos int, cont
 	neededTypes[typeName] = true
 }
 
-// copiedTypes 按目标包和短名称记录被复制类型的原始全限定名。
+// copiedTypes records copied types' original fully qualified names by target package and short name.
 var copiedTypes = make(map[string]map[string]string)
 
-// TypeNode 表示嵌套消息与枚举组成的类型树节点。
+// TypeNode is a node in the type tree of nested messages and enums.
 type TypeNode struct {
-	// Name 是当前嵌套层级的类型名。
+	// Name is the type name at the current nesting level.
 	Name string
-	// Message 保存当前节点的消息声明。
+	// Message holds the node's message declaration.
 	Message *Message
-	// Enum 保存当前节点的枚举声明。
+	// Enum holds the node's enum declaration.
 	Enum *Enum
-	// Children 保存下一层嵌套类型。
+	// Children holds the next level of nested types.
 	Children map[string]*TypeNode
 }
 
-// collectImports 只收集 Google 标准依赖，其余类型会复制到本地。
+// collectImports collects only Google standard dependencies; other types are copied locally.
 func collectImports(currentPkg string, messages []Message, services []Service, resolver *TypeResolver) map[string]bool {
 	imports := make(map[string]bool)
 
@@ -277,7 +277,7 @@ func collectImports(currentPkg string, messages []Message, services []Service, r
 		}
 
 		refPkg, shortName := parseTypeName(typeName)
-		// 仅导入 Google 标准类型。
+		// Import only Google standard types.
 		if refPkg == "google.protobuf" {
 			var importFile string
 			switch shortName {
@@ -321,7 +321,7 @@ func collectImports(currentPkg string, messages []Message, services []Service, r
 					addImport(ref, msg.Pos, msg.ModuleStart, f.Kind)
 				}
 			}
-			// map 值类型也可能引用标准包。
+			// map value types may also reference a standard package.
 			if f.Kind == "map" && (f.MapValueKind == "message" || f.MapValueKind == "enum") {
 				if ref, ok := f.MapValueT.(string); ok {
 					addImport(ref, msg.Pos, msg.ModuleStart, f.MapValueKind)

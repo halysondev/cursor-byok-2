@@ -1,4 +1,4 @@
-// renderer.go 把协议声明树渲染为稳定的 proto 文本。
+// renderer.go renders the protocol declaration tree into stable proto text.
 package main
 
 import (
@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-// generateProtoFile 把单个协议包的声明渲染并写入文件。
+// generateProtoFile renders a single protocol package's declarations and writes the file.
 func generateProtoFile(pkgName string, messages []Message, enums []Enum, services []Service, resolver *TypeResolver, outputDir string) {
-	// 先收集全部跨包标准依赖。
+	// First collect all cross-package standard dependencies.
 	imports := collectImports(pkgName, messages, services, resolver)
 
 	var sb strings.Builder
@@ -20,7 +20,7 @@ func generateProtoFile(pkgName string, messages []Message, enums []Enum, service
 	sb.WriteString(`syntax = "proto3";` + "\n\n")
 	sb.WriteString(fmt.Sprintf("package %s;\n\n", pkgName))
 
-	// 按稳定顺序写入 import。
+	// Write imports in stable order.
 	if len(imports) > 0 {
 		sortedImports := make([]string, 0, len(imports))
 		for imp := range imports {
@@ -37,7 +37,7 @@ func generateProtoFile(pkgName string, messages []Message, enums []Enum, service
 	goPackageName := strings.ReplaceAll(pkgName, ".", "")
 	sb.WriteString(fmt.Sprintf(`option go_package = "github.com/leookun/cursor-byok/cursor-proto/gen/%s;%s";`+"\n\n", goPackagePath, goPackageName))
 
-	// 建立嵌套类型树。
+	// Build the nested type tree.
 	root := &TypeNode{Children: make(map[string]*TypeNode)}
 
 	for i := range messages {
@@ -52,16 +52,16 @@ func generateProtoFile(pkgName string, messages []Message, enums []Enum, service
 		insertEnum(root, path, enum)
 	}
 
-	// 写入全部顶层类型。
+	// Write all top-level types.
 	writeTypeTree(root, &sb, resolver, 0, pkgName)
 
-	// 写入服务声明。
+	// Write service declarations.
 	sort.Slice(services, func(i, j int) bool {
 		return services[i].ShortName < services[j].ShortName
 	})
 
 	for _, svc := range services {
-		// 写入服务来源注释。
+		// Write the service origin comment.
 		sb.WriteString(fmt.Sprintf("// Source: %s (var: %s)\n", svc.TypeName, svc.VarName))
 		sb.WriteString(fmt.Sprintf("service %s {\n", svc.ShortName))
 		for _, m := range svc.Methods {
@@ -75,14 +75,14 @@ func generateProtoFile(pkgName string, messages []Message, enums []Enum, service
 				sb.WriteString(fmt.Sprintf("  rpc %s(stream %s) returns (%s) {}\n", m.Name, inputType, outputType))
 			case "BiDiStreaming":
 				sb.WriteString(fmt.Sprintf("  rpc %s(stream %s) returns (stream %s) {}\n", m.Name, inputType, outputType))
-			default: // 默认为一元调用。
+			default: // Default to a unary call.
 				sb.WriteString(fmt.Sprintf("  rpc %s(%s) returns (%s) {}\n", m.Name, inputType, outputType))
 			}
 		}
 		sb.WriteString("}\n\n")
 	}
 
-	// 每个协议包写入扁平输出目录中的单个文件。
+	// Each protocol package is written as a single file in the flat output directory.
 	fileName := strings.ReplaceAll(pkgName, ".", "_") + ".proto"
 	filePath := filepath.Join(outputDir, fileName)
 
@@ -90,7 +90,7 @@ func generateProtoFile(pkgName string, messages []Message, enums []Enum, service
 	fmt.Printf("Generated: %s (%d messages, %d enums, %d services)\n", filePath, len(messages), len(enums), len(services))
 }
 
-// resolveMethodType 解析方法消息类型并处理本地复制类型。
+// resolveMethodType resolves method message types and handles locally copied types.
 func resolveMethodType(ref string, resolver *TypeResolver, currentPkg string, contextPos int, contextModuleStart int) string {
 	typeName, ok := resolver.ResolveTypeName(ref, contextPos, contextModuleStart, currentPkg, "message")
 	if !ok {
@@ -102,7 +102,7 @@ func resolveMethodType(ref string, resolver *TypeResolver, currentPkg string, co
 	if refPkg == currentPkg || refPkg == "" {
 		return shortName
 	}
-	// 检查类型是否由其他包复制到当前包。
+	// Check whether the type was copied into the current package from another.
 	if copied := copiedTypes[currentPkg]; copied != nil {
 		if _, isCopied := copied[shortName]; isCopied {
 			return shortName
@@ -111,7 +111,7 @@ func resolveMethodType(ref string, resolver *TypeResolver, currentPkg string, co
 	return refPkg + "." + shortName
 }
 
-// insertMessage 把消息插入嵌套类型树。
+// insertMessage inserts a message into the nested type tree.
 func insertMessage(node *TypeNode, path []string, msg *Message) {
 	if len(path) == 0 {
 		return
@@ -135,7 +135,7 @@ func insertMessage(node *TypeNode, path []string, msg *Message) {
 	}
 }
 
-// insertEnum 把枚举插入嵌套类型树。
+// insertEnum inserts an enum into the nested type tree.
 func insertEnum(node *TypeNode, path []string, enum *Enum) {
 	if len(path) == 0 {
 		return
@@ -159,9 +159,9 @@ func insertEnum(node *TypeNode, path []string, enum *Enum) {
 	}
 }
 
-// writeTypeTree 按名称稳定输出嵌套消息和枚举。
+// writeTypeTree emits nested messages and enums in stable name order.
 func writeTypeTree(node *TypeNode, sb *strings.Builder, resolver *TypeResolver, indent int, currentPkg string) {
-	// 对子节点排序以保证输出稳定。
+	// Sort child nodes for stable output.
 	var names []string
 	for name := range node.Children {
 		names = append(names, name)
@@ -174,7 +174,7 @@ func writeTypeTree(node *TypeNode, sb *strings.Builder, resolver *TypeResolver, 
 		child := node.Children[name]
 
 		if child.Enum != nil {
-			// 检查枚举是否来自其他包。
+			// Check whether the enum comes from another package.
 			originalType := ""
 			if copied := copiedTypes[currentPkg]; copied != nil {
 				if orig, ok := copied[child.Enum.ShortName]; ok {
@@ -182,27 +182,27 @@ func writeTypeTree(node *TypeNode, sb *strings.Builder, resolver *TypeResolver, 
 				}
 			}
 
-			// 写入枚举来源注释。
+			// Write the enum origin comment.
 			if originalType != "" {
 				sb.WriteString(fmt.Sprintf("%s// Copied from: %s (var: %s)\n", indentStr, originalType, child.Enum.VarName))
 			} else {
 				sb.WriteString(fmt.Sprintf("%s// Source: %s (var: %s)\n", indentStr, child.Enum.TypeName, child.Enum.VarName))
 			}
-			// 写入枚举声明。
+			// Write the enum declaration.
 			sb.WriteString(fmt.Sprintf("%senum %s {\n", indentStr, name))
 			for _, v := range child.Enum.Values {
 				sb.WriteString(fmt.Sprintf("%s  %s = %d;\n", indentStr, v.Name, v.No))
 			}
 			sb.WriteString(fmt.Sprintf("%s}\n\n", indentStr))
 		} else if child.Message != nil || len(child.Children) > 0 {
-			// 写入消息来源注释。
+			// Write the message origin comment.
 			if child.Message != nil {
 				varInfo := child.Message.VarName
 				if child.Message.InternalName != "" && child.Message.InternalName != child.Message.VarName {
 					varInfo = fmt.Sprintf("%s, class: %s", child.Message.VarName, child.Message.InternalName)
 				}
 
-				// 检查消息是否来自其他包。
+				// Check whether the message comes from another package.
 				originalType := ""
 				if copied := copiedTypes[currentPkg]; copied != nil {
 					if orig, ok := copied[child.Message.ShortName]; ok {
@@ -216,13 +216,13 @@ func writeTypeTree(node *TypeNode, sb *strings.Builder, resolver *TypeResolver, 
 					sb.WriteString(fmt.Sprintf("%s// Source: %s (var: %s)\n", indentStr, child.Message.TypeName, varInfo))
 				}
 			}
-			// 即使节点只承载嵌套类型，也要写入消息容器。
+			// Write the message container even when the node only carries nested types.
 			sb.WriteString(fmt.Sprintf("%smessage %s {\n", indentStr, name))
 
-			// 先写入嵌套类型。
+			// Write nested types first.
 			writeTypeTree(child, sb, resolver, indent+1, currentPkg)
 
-			// 当前节点有消息声明时再写字段。
+			// Write fields only when the current node has a message declaration.
 			if child.Message != nil {
 				writeMessageFields(child.Message, sb, resolver, indent+1)
 			}
@@ -232,16 +232,16 @@ func writeTypeTree(node *TypeNode, sb *strings.Builder, resolver *TypeResolver, 
 	}
 }
 
-// writeMessageFields 输出普通字段和 oneof 分组。
+// writeMessageFields emits plain fields and oneof groups.
 func writeMessageFields(msg *Message, sb *strings.Builder, resolver *TypeResolver, indent int) {
 	indentStr := strings.Repeat("  ", indent)
 
-	// 获取当前消息路径，用于解析相对嵌套类型。
+	// Get the current message path for resolving relative nested types.
 	msgPath := msg.ShortName
 	currentPkg := msg.Package
 	preferredPkg, _ := parseTypeName(msg.TypeName)
 
-	// 按 oneof 分组字段。
+	// Group fields by oneof.
 	oneofGroups := make(map[string][]Field)
 	var regularFields []Field
 
@@ -253,7 +253,7 @@ func writeMessageFields(msg *Message, sb *strings.Builder, resolver *TypeResolve
 		}
 	}
 
-	// 先写普通字段。
+	// Write plain fields first.
 	for _, f := range regularFields {
 		fieldType := resolveFieldTypeWithPkg(f, resolver, msgPath, currentPkg, preferredPkg, msg.Pos, msg.ModuleStart)
 		prefix := ""
@@ -265,7 +265,7 @@ func writeMessageFields(msg *Message, sb *strings.Builder, resolver *TypeResolve
 		sb.WriteString(fmt.Sprintf("%s%s%s %s = %d;\n", indentStr, prefix, fieldType, f.Name, f.No))
 	}
 
-	// 再写 oneof 字段组。
+	// Then write the oneof field groups.
 	var oneofNames []string
 	for name := range oneofGroups {
 		oneofNames = append(oneofNames, name)
@@ -283,27 +283,27 @@ func writeMessageFields(msg *Message, sb *strings.Builder, resolver *TypeResolve
 	}
 }
 
-// parseTypeName 从全限定类型名拆出协议包和完整嵌套路径。
+// parseTypeName splits a fully qualified type name into protocol package and full nested path.
 func parseTypeName(typeName string) (pkg, shortName string) {
-	// 优先匹配 xxx.vN.Rest 形式的版本化协议包。
+	// Prefer the versioned protocol package form xxx.vN.Rest.
 	versionRe := regexp.MustCompile(`^([\w.]+\.v\d+)\.(.+)$`)
 	if match := versionRe.FindStringSubmatch(typeName); match != nil {
 		return match[1], match[2]
 	}
 
-	// 单独处理 google.protobuf 标准类型。
+	// Handle google.protobuf standard types separately.
 	if strings.HasPrefix(typeName, "google.protobuf.") {
 		rest := strings.TrimPrefix(typeName, "google.protobuf.")
 		return "google.protobuf", rest
 	}
 
-	// 单独处理 google.rpc 标准类型。
+	// Handle google.rpc standard types separately.
 	if strings.HasPrefix(typeName, "google.rpc.") {
 		rest := strings.TrimPrefix(typeName, "google.rpc.")
 		return "google.rpc", rest
 	}
 
-	// 无法识别包版本时按最后一个点回退拆分。
+	// When the package version is unrecognized, fall back to splitting at the last dot.
 	parts := strings.Split(typeName, ".")
 	if len(parts) > 1 {
 		return strings.Join(parts[:len(parts)-1], "."), parts[len(parts)-1]
@@ -311,12 +311,12 @@ func parseTypeName(typeName string) (pkg, shortName string) {
 	return "", typeName
 }
 
-// getNestedPath 把嵌套类型名拆成逐级路径。
+// getNestedPath splits a nested type name into its per-level path.
 func getNestedPath(shortName string) []string {
 	return strings.Split(shortName, ".")
 }
 
-// resolveFieldTypeWithPkg 结合当前包和父消息路径解析字段类型。
+// resolveFieldTypeWithPkg resolves a field type using the current package and parent message path.
 func resolveFieldTypeWithPkg(f Field, resolver *TypeResolver, parentPath string, currentPkg string, preferredPkg string, contextPos int, contextModuleStart int) string {
 	resolveNamedType := func(ref string, expectedKind string) string {
 		typeName, ok := resolver.ResolveTypeName(ref, contextPos, contextModuleStart, preferredPkg, expectedKind)
@@ -327,26 +327,26 @@ func resolveFieldTypeWithPkg(f Field, resolver *TypeResolver, parentPath string,
 
 		refPkg, shortName := parseTypeName(typeName)
 
-		// 类型位于同一父消息下时使用相对路径。
+		// Use a relative path when the type lives under the same parent message.
 		if parentPath != "" && strings.HasPrefix(shortName, parentPath+".") {
-			// 例如消息内部将 ConversationMessage.CodeChunk 缩短为 CodeChunk。
+			// e.g. ConversationMessage.CodeChunk shortens to CodeChunk inside the message.
 			return strings.TrimPrefix(shortName, parentPath+".")
 		}
 
-		// 同包类型只使用短名称。
+		// Same-package types use the short name only.
 		if refPkg == currentPkg || refPkg == "" {
 			return shortName
 		}
 
-		// 循环依赖中优先使用已经复制到当前包的类型。
+		// In cyclic dependencies prefer types already copied into the current package.
 		if copied := copiedTypes[currentPkg]; copied != nil {
 			if _, isCopied := copied[shortName]; isCopied {
-				// 本地存在复制类型时使用短名称。
+				// Use the short name when a copied type exists locally.
 				return shortName
 			}
 		}
 
-		// 其余跨包引用保留全限定类型名。
+		// Other cross-package references keep the fully qualified name.
 		return refPkg + "." + shortName
 	}
 
@@ -366,10 +366,10 @@ func resolveFieldTypeWithPkg(f Field, resolver *TypeResolver, parentPath string,
 	}
 
 	if f.Kind == "map" {
-		// map 字段分别解析键和值类型。
+		// map fields resolve key and value types separately.
 		keyType := scalarTypes[f.MapKey]
 		if keyType == "" {
-			keyType = "string" // 未知标量默认使用字符串。
+			keyType = "string" // Unknown scalars default to string.
 		}
 
 		var valueType string
@@ -391,5 +391,5 @@ func resolveFieldTypeWithPkg(f Field, resolver *TypeResolver, parentPath string,
 		return fmt.Sprintf("map<%s, %s>", keyType, valueType)
 	}
 
-	return "bytes" // 未识别字段类型时回退为字节串。
+	return "bytes" // Unrecognized field types fall back to bytes.
 }

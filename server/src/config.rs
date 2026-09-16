@@ -57,7 +57,7 @@ pub struct Config {
     pub provider_stream_idle_timeout: Duration,
     pub console: Option<ConsoleSource>,
     pub use_persisted_ports: bool,
-    /// 面向用户的应用版本;桌面壳会覆盖为自身版本,用于插件 minAppVersion 门控。
+    /// The user-facing app version; the desktop shell overrides it with its own version. Used for plugin minAppVersion gating.
     pub app_version: String,
 }
 

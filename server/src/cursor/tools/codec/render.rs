@@ -286,7 +286,7 @@ pub fn render_tool_call(call: &ToolCall, completed: bool) -> Result<pb::ToolCall
             .and_then(Value::as_str)
             .map(str::to_string)
     };
-    // 与执行侧一致的参数别名兼容(如 Claude Code 习惯的 file_path),仅影响展示。
+    // Same parameter-alias compatibility as the execution side (e.g. Claude Code-style file_path); only affects display.
     let aliased = |names: &[&str]| -> String {
         names
             .iter()

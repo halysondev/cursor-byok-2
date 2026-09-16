@@ -1,4 +1,4 @@
-// modules.go 扫描模块边界、合并声明并执行提取结果校验。
+// modules.go scans module boundaries, merges declarations, and validates extraction results.
 package main
 
 import (
@@ -14,10 +14,10 @@ import (
 	"github.com/jhump/protoreflect/desc/protoparse"
 )
 
-// moduleStartRe 匹配 Webpack 数字模块的函数起点。
+// moduleStartRe matches the function start of a Webpack numbered module.
 var moduleStartRe = regexp.MustCompile(`(?:^|,)\s*(\d+)\s*:\s*(?:function\s*\(\s*[\w$,\s]*\s*\)|\(\s*[\w$,\s]*\s*\)\s*=>)\s*\{`)
 
-// buildModuleStarts 收集 bundle 内全部模块起始位置。
+// buildModuleStarts collects every module start position in the bundle.
 func buildModuleStarts(text string) []int {
 	matches := moduleStartRe.FindAllStringSubmatchIndex(text, -1)
 	starts := make([]int, 0, len(matches))
@@ -27,7 +27,7 @@ func buildModuleStarts(text string) []int {
 	return starts
 }
 
-// moduleStartForPos 查找指定源码位置所属的模块起点。
+// moduleStartForPos finds the module start owning a given source position.
 func moduleStartForPos(moduleStarts []int, pos int) int {
 	if len(moduleStarts) == 0 {
 		return 0
@@ -41,7 +41,7 @@ func moduleStartForPos(moduleStarts []int, pos int) int {
 	return moduleStarts[index]
 }
 
-// buildModuleImportIndex 建立模块局部变量到导入模块编号的映射。
+// buildModuleImportIndex maps module-local variables to imported module numbers.
 func buildModuleImportIndex(text string, moduleStarts []int) map[int]map[string]int {
 	if len(moduleStarts) == 0 {
 		return nil
@@ -74,8 +74,8 @@ func buildModuleImportIndex(text string, moduleStarts []int) map[int]map[string]
 	return importsByModule
 }
 
-// ExtractProtosFromFiles 分别提取各 bundle，规范化类型引用后按全限定名合并。
-// 多个 bundle 出现同名声明时优先保留靠前输入。
+// ExtractProtosFromFiles extracts each bundle separately, normalizes type references, and merges by fully qualified name.
+// When multiple bundles declare the same name, the earlier input wins.
 func ExtractProtosFromFiles(inputFiles []string, outputDir string) {
 	activeDiagnostics = newExtractionDiagnostics()
 	defer func() {
@@ -144,10 +144,10 @@ func ExtractProtosFromFiles(inputFiles []string, outputDir string) {
 		fmt.Fprintf(os.Stderr, "Validation warning: %v\n", validateErr)
 	}
 
-	fmt.Printf("提取完成: %d 个消息, %d 个枚举, %d 个服务\n", len(messages), len(enums), len(services))
+	fmt.Printf("Extraction complete: %d messages, %d enums, %d services\n", len(messages), len(enums), len(services))
 }
 
-// normalizeTypeReferences 把字段和方法引用统一转换为全限定类型名。
+// normalizeTypeReferences converts field and method references into fully qualified type names.
 func normalizeTypeReferences(messages []Message, services []Service, resolver *TypeResolver) {
 	resolve := func(ref any, contextPos int, moduleStart int, pkg string, kind string) any {
 		symbol, ok := ref.(string)
@@ -187,7 +187,7 @@ func normalizeTypeReferences(messages []Message, services []Service, resolver *T
 	}
 }
 
-// mergeMessagesByTypeName 按全限定名合并消息并保留首次声明。
+// mergeMessagesByTypeName merges messages by fully qualified name, keeping the first declaration.
 func mergeMessagesByTypeName(messages []Message) []Message {
 	seen := make(map[string]bool)
 	merged := make([]Message, 0, len(messages))
@@ -201,7 +201,7 @@ func mergeMessagesByTypeName(messages []Message) []Message {
 	return merged
 }
 
-// mergeEnumsByTypeName 按全限定名合并枚举并保留首次声明。
+// mergeEnumsByTypeName merges enums by fully qualified name, keeping the first declaration.
 func mergeEnumsByTypeName(enums []Enum) []Enum {
 	seen := make(map[string]bool)
 	merged := make([]Enum, 0, len(enums))
@@ -215,7 +215,7 @@ func mergeEnumsByTypeName(enums []Enum) []Enum {
 	return merged
 }
 
-// mergeServicesByTypeName 按全限定名合并服务并保留首次声明。
+// mergeServicesByTypeName merges services by fully qualified name, keeping the first declaration.
 func mergeServicesByTypeName(services []Service) []Service {
 	seen := make(map[string]bool)
 	merged := make([]Service, 0, len(services))
@@ -229,7 +229,7 @@ func mergeServicesByTypeName(services []Service) []Service {
 	return merged
 }
 
-// compactStrings 清理、去重并排序诊断字符串。
+// compactStrings cleans, deduplicates, and sorts diagnostic strings.
 func compactStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
@@ -243,7 +243,7 @@ func compactStrings(values []string) []string {
 	return compacted
 }
 
-// hasValidationFailure 判断诊断结果是否达到失败条件。
+// hasValidationFailure reports whether diagnostics meet the failure condition.
 func hasValidationFailure(diag *extractionDiagnostics, validateErr error) bool {
 	if validateErr != nil {
 		return true
@@ -266,14 +266,14 @@ func hasValidationFailure(diag *extractionDiagnostics, validateErr error) bool {
 	return false
 }
 
-// printDiagnosticsSummary 输出提取覆盖率和异常样本摘要。
+// printDiagnosticsSummary prints an extraction coverage and anomaly-sample summary.
 func printDiagnosticsSummary(diag *extractionDiagnostics) {
 	if diag == nil {
 		return
 	}
 
 	fmt.Printf(
-		"诊断汇总: fields %d/%d 解析成功, declarations %d/%d 已提取, skipped=%d, unresolved=%d, placeholders=%d, empty_messages=%d\n",
+		"Diagnostics: fields %d/%d parsed, declarations %d/%d extracted, skipped=%d, unresolved=%d, placeholders=%d, empty_messages=%d\n",
 		diag.parsedFieldObjects,
 		diag.totalFieldObjects,
 		diag.extractedTypes,
@@ -285,7 +285,7 @@ func printDiagnosticsSummary(diag *extractionDiagnostics) {
 	)
 
 	if diag.skippedFieldObjects > 0 && len(diag.skippedFieldSamples) > 0 {
-		fmt.Println("字段解析失败样例:")
+		fmt.Println("Field parse failure samples:")
 		for _, sample := range diag.skippedFieldSamples {
 			fmt.Printf("  - %s\n", sample)
 		}
@@ -297,14 +297,14 @@ func printDiagnosticsSummary(diag *extractionDiagnostics) {
 			keys = append(keys, key)
 		}
 		sort.Strings(keys)
-		fmt.Println("未解析类型引用:")
+		fmt.Println("Unresolved type references:")
 		for _, key := range keys {
 			fmt.Printf("  - %s (%d)\n", key, diag.unresolvedTypeRefs[key])
 		}
 	}
 
 	if len(diag.placeholderHits) > 0 {
-		fmt.Println("占位字段命中:")
+		fmt.Println("Placeholder field hits:")
 		for i, hit := range diag.placeholderHits {
 			if i >= 20 {
 				fmt.Printf("  - ... and %d more\n", len(diag.placeholderHits)-20)
@@ -315,7 +315,7 @@ func printDiagnosticsSummary(diag *extractionDiagnostics) {
 	}
 
 	if len(diag.missingDeclarations) > 0 {
-		fmt.Println("未提取的 Proto 声明:")
+		fmt.Println("Unextracted proto declarations:")
 		for i, typeName := range diag.missingDeclarations {
 			if i >= 20 {
 				fmt.Printf("  - ... and %d more\n", len(diag.missingDeclarations)-20)
@@ -326,7 +326,7 @@ func printDiagnosticsSummary(diag *extractionDiagnostics) {
 	}
 }
 
-// declarationCoverage 比较 bundle 声明数量与实际提取数量。
+// declarationCoverage compares the bundle's declaration count against what was actually extracted.
 func declarationCoverage(text string, messages []Message, enums []Enum, services []Service) (int, int, []string) {
 	declared := make(map[string]bool)
 	collect := func(re *regexp.Regexp) {
@@ -368,7 +368,7 @@ func declarationCoverage(text string, messages []Message, enums []Enum, services
 	return len(declared), matched, missing
 }
 
-// validateGeneratedProtos 检查生成文件语法占位和关键 Agent 结构。
+// validateGeneratedProtos checks generated files for syntax placeholders and key Agent structures.
 func validateGeneratedProtos(outputDir string, diag *extractionDiagnostics) error {
 	entries, err := os.ReadDir(outputDir)
 	if err != nil {
@@ -418,7 +418,7 @@ func validateGeneratedProtos(outputDir string, diag *extractionDiagnostics) erro
 	return nil
 }
 
-// validateRequiredAgentShapes 校验 Agent 流控消息的必要字段形状。
+// validateRequiredAgentShapes validates the required field shapes of Agent flow-control messages.
 func validateRequiredAgentShapes(file string, body string) error {
 	if strings.Contains(body, "message ExecClientControlMessage") && !streamCloseRe.MatchString(body) {
 		return fmt.Errorf("%s: ExecClientControlMessage.stream_close must be ExecClientStreamClose", file)

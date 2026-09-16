@@ -1,4 +1,4 @@
-// cursor-proxy-debugger 提供独立 Cursor API 调试服务的进程入口。
+// cursor-proxy-debugger is the process entry point for the standalone Cursor API debug service.
 package main
 
 import (
@@ -12,14 +12,14 @@ import (
 	"github.com/pkg/browser"
 )
 
-// main 解析启动参数，并管理调试服务的完整生命周期。
+// main parses startup flags and manages the debug service's full lifecycle.
 func main() {
 	config := Config{}
 	openBrowser := true
-	flag.StringVar(&config.ServiceAddr, "addr", defaultServiceAddr, "Cursor API 调试服务监听地址")
-	flag.IntVar(&config.MaxExchanges, "max-exchanges", 200, "内存中保留的最大请求数")
-	flag.StringVar(&config.DatabasePath, "db", "", "SQLite 数据库路径（默认使用用户配置目录）")
-	flag.BoolVar(&openBrowser, "open", true, "启动后打开浏览器")
+	flag.StringVar(&config.ServiceAddr, "addr", defaultServiceAddr, "Cursor API debug service listen address")
+	flag.IntVar(&config.MaxExchanges, "max-exchanges", 200, "maximum number of requests kept in memory")
+	flag.StringVar(&config.DatabasePath, "db", "", "SQLite database path (defaults to the user config directory)")
+	flag.BoolVar(&openBrowser, "open", true, "open a browser after startup")
 	flag.Parse()
 
 	server, err := New(config)
@@ -30,10 +30,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("Cursor API 调试服务已启动\n")
-	fmt.Printf("服务地址: http://%s\n", server.ServiceAddr())
-	fmt.Printf("固定上游: %s\n", defaultUpstreamURL)
-	fmt.Printf("调试界面: %s\n", server.UIURL())
+	fmt.Printf("Cursor API debug service started\n")
+	fmt.Printf("Service address: http://%s\n", server.ServiceAddr())
+	fmt.Printf("Fixed upstream: %s\n", defaultUpstreamURL)
+	fmt.Printf("Debug UI: %s\n", server.UIURL())
 	fmt.Printf("SQLite: %s\n", server.DatabasePath())
 	if openBrowser {
 		_ = browser.OpenURL(server.UIURL())
@@ -45,6 +45,6 @@ func main() {
 	signal.Stop(signals)
 
 	if err := server.Close(); err != nil {
-		log.Printf("关闭调试服务失败：%v", err)
+		log.Printf("failed to shut down the debug service: %v", err)
 	}
 }

@@ -56,7 +56,7 @@ export function AppLifecycleSettingsCard() {
       setLoadingAutostart(true);
       await writeAutostart(enabled);
       setAutostart(await readAutostart());
-      message(enabled ? t("已开启开机启动") : t("已关闭开机启动"));
+      message(enabled ? "Launch at login enabled" : "Launch at login disabled");
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -69,7 +69,7 @@ export function AppLifecycleSettingsCard() {
       setLoadingDesktopSettings(true);
       await writeSilentStart(enabled);
       setSilentStart(enabled);
-      message(enabled ? t("已开启静默启动") : t("已关闭静默启动"));
+      message(enabled ? "Silent start enabled" : "Silent start disabled");
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -82,7 +82,7 @@ export function AppLifecycleSettingsCard() {
       setLoadingDesktopSettings(true);
       await writeDockIconVisibility(visible);
       setDockIconVisible(visible);
-      message(visible ? t("已显示 Dock 栏图标") : t("已隐藏 Dock 栏图标"));
+      message(visible ? "Dock icon shown" : "Dock icon hidden");
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -93,10 +93,10 @@ export function AppLifecycleSettingsCard() {
   const checkUpdate = async () => {
     try {
       const nextVersion = await updateStore.check();
-      message(nextVersion ? t("发现新版本 {version}", { version: nextVersion }) : t("当前已是最新版本"));
+      message(nextVersion ? `Version ${nextVersion} is available` : "You're up to date");
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : String(cause);
-      message(t("检查更新失败：{error}", { error }));
+      message(`Failed to check for updates: ${error}`);
     }
   };
 
@@ -105,61 +105,61 @@ export function AppLifecycleSettingsCard() {
       await updateStore.install();
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : String(cause);
-      message(t("安装更新失败：{error}", { error }));
+      message(`Failed to install update: ${error}`);
     }
   };
 
-  return <TitledCard title={t("应用设置")}>
+  return <TitledCard title={"Application"}>
     <div className={styles.row}>
       <div>
-        <strong>{t("开机启动")}</strong>
-        <small>{t("登录系统后自动启动 Cursor BYOK。")}</small>
+        <strong>{"Launch at login"}</strong>
+        <small>{"Start Cursor BYOK automatically after signing in."}</small>
       </div>
       <Switch
         checked={autostart}
         disabled={!native || loadingAutostart}
-        label={t("开机启动")}
+        label={"Launch at login"}
         onChange={(enabled) => void toggleAutostart(enabled)}
       />
     </div>
     {autostart && <div className={styles.row}>
       <div>
-        <strong>{t("静默启动")}</strong>
-        <small>{t("开机启动时不显示主窗口，仅保留系统托盘图标。")}</small>
+        <strong>{"Silent start"}</strong>
+        <small>{"Hide the main window on startup and keep only the tray icon."}</small>
       </div>
       <Switch
         checked={silentStart}
         disabled={!native || loadingDesktopSettings}
-        label={t("静默启动")}
+        label={"Silent start"}
         onChange={(enabled) => void toggleSilentStart(enabled)}
       />
     </div>}
     {dockVisibilitySetting && <div className={styles.row}>
       <div>
-        <strong>{t("在 Dock 栏显示")}</strong>
-        <small>{t("关闭后隐藏 Dock 栏图标，仍可通过菜单栏图标打开应用。")}</small>
+        <strong>{"Show in Dock"}</strong>
+        <small>{"Hide the Dock icon when disabled. You can still open the app from the menu bar icon."}</small>
       </div>
       <Switch
         checked={dockIconVisible}
         disabled={loadingDesktopSettings}
-        label={t("在 Dock 栏显示")}
+        label={"Show in Dock"}
         onChange={(visible) => void toggleDockIcon(visible)}
       />
     </div>}
     <div className={styles.row}>
       <div>
-        <strong>{t("软件更新")}</strong>
+        <strong>{"Software updates"}</strong>
         <small>{availableVersion
-          ? t("版本 {version} 可以安装", { version: availableVersion })
-          : t("当前版本 {version}", { version })}</small>
+          ? `Version ${availableVersion} is ready to install`
+          : `Current version ${version}`}</small>
       </div>
       {availableVersion
         ? <Button size="small" variant="primary" disabled={installing} onClick={() => void updateNow()}>
-            {installing ? t("安装中…") : t("下载并安装")}
+            {installing ? "Installing…" : "Download and install"}
             <span className={styles.updateDot} aria-hidden="true" />
           </Button>
         : <Button size="small" disabled={!native || checking} onClick={() => void checkUpdate()}>
-            {checking ? t("检查中…") : t("检查更新")}
+            {checking ? "Checking…" : "Check for updates"}
           </Button>}
     </div>
   </TitledCard>;

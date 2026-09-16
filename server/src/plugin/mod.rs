@@ -22,7 +22,7 @@ pub use descriptor::{
 pub use registry::{ImportResponse, OAuthBeginResponse, OAuthPollResponse, PluginRegistry};
 pub use runtime::{PluginRuntime, PluginRuntimePhase, PluginRuntimeState, PluginRuntimeStatus};
 
-/// Windows 下阻止 Deno 子进程弹出控制台窗口(CREATE_NO_WINDOW)。
+/// Prevents the Deno child process from popping up a console window on Windows (CREATE_NO_WINDOW).
 #[cfg(windows)]
 fn detach_console(command: &mut tokio::process::Command) {
     command.creation_flags(0x0800_0000);

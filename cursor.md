@@ -1,234 +1,233 @@
 
-## 完整目录
+## Full directory tree
 
 ```text
 server/
-├── src/                                        # ≈36,000 行；服务端全部业务代码
-│   ├── app.rs                                  # ≈180 行；依赖组装和服务启动
-│   ├── config.rs                               # ≈180 行；进程配置
-│   ├── error.rs                                # ≈150 行；统一错误
-│   ├── network.rs                              # ≈100 行；网络公共配置
+├── src/                                        # ≈36,000 lines; all server business code
+│   ├── app.rs                                  # ≈180 lines; dependency assembly and service startup
+│   ├── config.rs                               # ≈180 lines; process configuration
+│   ├── error.rs                                # ≈150 lines; unified errors
+│   ├── network.rs                              # ≈100 lines; shared network configuration
 │   │
-│   ├── bin/                                    # ≈100 行；可执行程序入口
-│   │   └── cursor-server.rs                    # ≈100 行；启动服务
+│   ├── bin/                                    # ≈100 lines; executable entry point
+│   │   └── cursor-server.rs                    # ≈100 lines; starts the service
 │   │
-│   ├── api/                                    # ≈1,500 行；HTTP/Connect API
-│   │   ├── mod.rs                              # ≈20 行；模块导出
-│   │   ├── router.rs                           # ≈100 行；总路由
-│   │   └── cursor/                             # ≈1,350 行；Cursor API
-│   │       ├── mod.rs                          # ≈20 行；Cursor 路由
-│   │       ├── bidi.rs                         # ≈250 行；上行请求
-│   │       ├── run_sse.rs                      # ≈300 行；下行订阅
-│   │       ├── handlers.rs                     # ≈450 行；其他 Cursor API
-│   │       └── proxy.rs                        # ≈330 行；本地/官方服务选择
+│   ├── api/                                    # ≈1,500 lines; HTTP/Connect API
+│   │   ├── mod.rs                              # ≈20 lines; module exports
+│   │   ├── router.rs                           # ≈100 lines; top-level router
+│   │   └── cursor/                             # ≈1,350 lines; Cursor API
+│   │       ├── mod.rs                          # ≈20 lines; Cursor routes
+│   │       ├── bidi.rs                         # ≈250 lines; upstream requests
+│   │       ├── run_sse.rs                      # ≈300 lines; downstream subscription
+│   │       ├── handlers.rs                     # ≈450 lines; other Cursor APIs
+│   │       └── proxy.rs                        # ≈330 lines; local/official service selection
 │   │
-│   ├── cursor/                                 # ≈18,000 行；Cursor Agent 适配层
-│   │   ├── mod.rs                              # ≈40 行；公共导出
+│   ├── cursor/                                 # ≈18,000 lines; Cursor Agent adaptation layer
+│   │   ├── mod.rs                              # ≈40 lines; public exports
 │   │   │
-│   │   ├── transport/                          # ≈800 行；request_id 双向通道
-│   │   │   ├── mod.rs                          # ≈20 行；模块导出
-│   │   │   ├── registry.rs                     # ≈220 行；request_id → TransportHandle
-│   │   │   ├── handle.rs                       # ≈200 行；输入、订阅和终态
-│   │   │   ├── inbox.rs                        # ≈70 行；append_seqno 排序
-│   │   │   └── output.rs                       # ≈290 行；缓存、广播、重放、关闭
+│   │   ├── transport/                          # ≈800 lines; request_id bidirectional channel
+│   │   │   ├── mod.rs                          # ≈20 lines; module exports
+│   │   │   ├── registry.rs                     # ≈220 lines; request_id → TransportHandle
+│   │   │   ├── handle.rs                       # ≈200 lines; input, subscription, and terminal states
+│   │   │   ├── inbox.rs                        # ≈70 lines; append_seqno ordering
+│   │   │   └── output.rs                       # ≈290 lines; cache, broadcast, replay, close
 │   │   │
-│   │   ├── conversation/                       # ≈1,600 行；Conversation 运行协调
-│   │   │   ├── mod.rs                          # ≈30 行；公共类型
-│   │   │   ├── registry.rs                     # ≈220 行；conversation_id → Runtime
-│   │   │   ├── runtime.rs                      # ≈500 行；current_run 唯一所有者
-│   │   │   ├── command.rs                      # ≈120 行；Start/Action/Cancel/Disconnect
-│   │   │   ├── delivery.rs                     # ≈280 行；Ignore/Insert/Break
-│   │   │   ├── pending.rs                      # ≈150 行；Run 边界上的待处理消息
-│   │   │   └── output.rs                       # ≈300 行；RunEvent 下行及 Step 记录
+│   │   ├── conversation/                       # ≈1,600 lines; Conversation run coordination
+│   │   │   ├── mod.rs                          # ≈30 lines; public types
+│   │   │   ├── registry.rs                     # ≈220 lines; conversation_id → Runtime
+│   │   │   ├── runtime.rs                      # ≈500 lines; sole owner of current_run
+│   │   │   ├── command.rs                      # ≈120 lines; Start/Action/Cancel/Disconnect
+│   │   │   ├── delivery.rs                     # ≈280 lines; Ignore/Insert/Break
+│   │   │   ├── pending.rs                      # ≈150 lines; messages pending at Run boundaries
+│   │   │   └── output.rs                       # ≈300 lines; RunEvent downstream and Step records
 │   │   │
-│   │   ├── compile/                            # ≈2,700 行；Cursor 输入编译
-│   │   │   ├── mod.rs                          # ≈30 行；统一入口
-│   │   │   ├── run.rs                          # ≈650 行；RunRequest → PreparedRun
-│   │   │   ├── context.rs                      # ≈650 行；rules/skills/MCP/environment
-│   │   │   ├── action.rs                       # ≈250 行；Action 分类和路由
-│   │   │   ├── insert_messages.rs              # ≈400 行；非打断消息
-│   │   │   ├── break_messages.rs               # ≈400 行；打断当前 cycle 的消息
-│   │   │   ├── images.rs                       # ≈100 行；图片和 Blob
-│   │   │   └── model.rs                        # ≈220 行；Cursor model → Provider model
+│   │   ├── compile/                            # ≈2,700 lines; Cursor input compilation
+│   │   │   ├── mod.rs                          # ≈30 lines; unified entry
+│   │   │   ├── run.rs                          # ≈650 lines; RunRequest → PreparedRun
+│   │   │   ├── context.rs                      # ≈650 lines; rules/skills/MCP/environment
+│   │   │   ├── action.rs                       # ≈250 lines; Action classification and routing
+│   │   │   ├── insert_messages.rs              # ≈400 lines; non-interrupting messages
+│   │   │   ├── break_messages.rs               # ≈400 lines; messages that interrupt the current cycle
+│   │   │   ├── images.rs                       # ≈100 lines; images and Blobs
+│   │   │   └── model.rs                        # ≈220 lines; Cursor model → Provider model
 │   │   │
-│   │   ├── checkpoint/                         # ≈2,200 行；Conversation 持久化和恢复
-│   │   │   ├── mod.rs                          # ≈30 行；公共接口
-│   │   │   ├── builder.rs                      # ≈280 行；构建 Checkpoint
-│   │   │   ├── steps.rs                        # ≈120 行；尚未持久化的步骤缓存
-│   │   │   ├── turns.rs                        # ≈150 行；Conversation turns
-│   │   │   ├── roots.rs                        # ≈150 行；稳定根消息
-│   │   │   ├── recovery.rs                     # ≈100 行；恢复 Conversation
-│   │   │   ├── summary.rs                      # ≈120 行；压缩摘要
-│   │   │   ├── derived.rs                      # ≈220 行；Todo/Plan 等派生状态
-│   │   │   ├── worker.rs                       # ≈250 行；异步持久化和 barrier
-│   │   │   └── messages/                       # ≈800 行；Message 编解码
-│   │   │       ├── mod.rs                      # ≈20 行；统一入口
-│   │   │       ├── decode.rs                   # ≈250 行；Checkpoint → Message
-│   │   │       ├── encode.rs                   # ≈280 行；Message → Checkpoint
-│   │   │       └── tests.rs                    # ≈250 行；稳定性测试
+│   │   ├── checkpoint/                         # ≈2,200 lines; Conversation persistence and recovery
+│   │   │   ├── mod.rs                          # ≈30 lines; public interface
+│   │   │   ├── builder.rs                      # ≈280 lines; builds Checkpoints
+│   │   │   ├── steps.rs                        # ≈120 lines; cache for steps not yet persisted
+│   │   │   ├── turns.rs                        # ≈150 lines; Conversation turns
+│   │   │   ├── roots.rs                        # ≈150 lines; stable root messages
+│   │   │   ├── recovery.rs                     # ≈100 lines; restores Conversations
+│   │   │   ├── summary.rs                      # ≈120 lines; compaction summaries
+│   │   │   ├── derived.rs                      # ≈220 lines; derived state such as Todo/Plan
+│   │   │   ├── worker.rs                       # ≈250 lines; async persistence and barrier
+│   │   │   └── messages/                       # ≈800 lines; Message codec
+│   │   │       ├── mod.rs                      # ≈20 lines; unified entry
+│   │   │       ├── decode.rs                   # ≈250 lines; Checkpoint → Message
+│   │   │       ├── encode.rs                   # ≈280 lines; Message → Checkpoint
+│   │   │       └── tests.rs                    # ≈250 lines; stability tests
 │   │   │
-│   │   ├── tools/                              # ≈6,500 行；可扩展 Tool 系统
-│   │   │   ├── mod.rs                          # ≈180 行；公共类型和注册
-│   │   │   ├── registry.rs                     # ≈180 行；Tool 定义
-│   │   │   ├── runtime.rs                      # ≈420 行；运行状态和取消
-│   │   │   ├── stream.rs                       # ≈350 行；流式参数
-│   │   │   ├── edit.rs                         # ≈340 行；编辑状态
-│   │   │   ├── schedule.rs                     # ≈100 行；后台任务调度
-│   │   │   ├── compat.rs                       # ≈150 行；兼容工具转换
+│   │   ├── tools/                              # ≈6,500 lines; extensible Tool system
+│   │   │   ├── mod.rs                          # ≈180 lines; public types and registration
+│   │   │   ├── registry.rs                     # ≈180 lines; Tool definitions
+│   │   │   ├── runtime.rs                      # ≈420 lines; run state and cancellation
+│   │   │   ├── stream.rs                       # ≈350 lines; streaming arguments
+│   │   │   ├── edit.rs                         # ≈340 lines; edit state
+│   │   │   ├── schedule.rs                     # ≈100 lines; background task scheduling
+│   │   │   ├── compat.rs                       # ≈150 lines; compatibility tool conversion
 │   │   │   │
-│   │   │   ├── codec/                          # ≈1,750 行；Tool Wire Protocol
-│   │   │   │   ├── mod.rs                      # ≈20 行；模块导出
-│   │   │   │   ├── request.rs                  # ≈520 行；执行请求编码
-│   │   │   │   ├── response.rs                 # ≈360 行；执行响应编码
-│   │   │   │   ├── query.rs                    # ≈250 行；InteractionQuery
-│   │   │   │   └── render.rs                   # ≈600 行；Cursor Tool 卡片
+│   │   │   ├── codec/                          # ≈1,750 lines; Tool Wire Protocol
+│   │   │   │   ├── mod.rs                      # ≈20 lines; module exports
+│   │   │   │   ├── request.rs                  # ≈520 lines; execution request encoding
+│   │   │   │   ├── response.rs                 # ≈360 lines; execution response encoding
+│   │   │   │   ├── query.rs                    # ≈250 lines; InteractionQuery
+│   │   │   │   └── render.rs                   # ≈600 lines; Cursor Tool cards
 │   │   │   │
-│   │   │   ├── tool_call_dispatch/             # ≈700 行；ToolCall 分发
-│   │   │   │   ├── mod.rs                      # ≈260 行；主 Dispatcher
-│   │   │   │   ├── exec.rs                     # ≈80 行；命令执行
-│   │   │   │   ├── edit.rs                     # ≈40 行；编辑调用
-│   │   │   │   ├── interaction.rs              # ≈260 行；用户交互
-│   │   │   │   ├── local.rs                    # ≈30 行；本地工具
-│   │   │   │   └── search.rs                   # ≈40 行；搜索工具
+│   │   │   ├── tool_call_dispatch/             # ≈700 lines; ToolCall dispatch
+│   │   │   │   ├── mod.rs                      # ≈260 lines; main Dispatcher
+│   │   │   │   ├── exec.rs                     # ≈80 lines; command execution
+│   │   │   │   ├── edit.rs                     # ≈40 lines; edit calls
+│   │   │   │   ├── interaction.rs              # ≈260 lines; user interaction
+│   │   │   │   ├── local.rs                    # ≈30 lines; local tools
+│   │   │   │   └── search.rs                   # ≈40 lines; search tools
 │   │   │   │
-│   │   │   └── tool_call_result/               # ≈3,000 行；ToolResult 消费
-│   │   │       ├── mod.rs                      # ≈180 行；统一结果
-│   │   │       ├── gate.rs                     # ≈850 行；完成关联和门控
-│   │   │       ├── interaction.rs              # ≈450 行；用户交互结果
-│   │   │       ├── local.rs                    # ≈220 行；本地工具结果
-│   │   │       ├── mcp.rs                      # ≈80 行；MCP 结果
-│   │   │       ├── mcp_state.rs                # ≈150 行；MCP 状态
-│   │   │       ├── search.rs                   # ≈150 行；搜索结果
-│   │   │       └── exec/                       # ≈920 行；命令执行结果
-│   │   │           ├── mod.rs                   # ≈180 行；执行结果入口
-│   │   │           ├── output.rs                # ≈500 行；输出处理
-│   │   │           └── render.rs                # ≈240 行；结果渲染
+│   │   │   └── tool_call_result/               # ≈3,000 lines; ToolResult consumption
+│   │   │       ├── mod.rs                      # ≈180 lines; unified results
+│   │   │       ├── gate.rs                     # ≈850 lines; completion correlation and gating
+│   │   │       ├── interaction.rs              # ≈450 lines; user interaction results
+│   │   │       ├── local.rs                    # ≈220 lines; local tool results
+│   │   │       ├── mcp.rs                      # ≈80 lines; MCP results
+│   │   │       ├── mcp_state.rs                # ≈150 lines; MCP state
+│   │   │       ├── search.rs                   # ≈150 lines; search results
+│   │   │       └── exec/                       # ≈920 lines; command execution results
+│   │   │           ├── mod.rs                   # ≈180 lines; execution result entry
+│   │   │           ├── output.rs                # ≈500 lines; output handling
+│   │   │           └── render.rs                # ≈240 lines; result rendering
 │   │   │
-│   │   ├── protocol/                           # ≈600 行；非 Tool Wire Protocol
-│   │   │   ├── mod.rs                          # ≈20 行；模块导出
-│   │   │   ├── proto.rs                        # ≈80 行；protobuf 类型
-│   │   │   ├── connect.rs                      # ≈150 行；Connect framing
-│   │   │   ├── json_stream.rs                  # ≈280 行；JSON 流
-│   │   │   └── events.rs                       # ≈300 行；实时下行消息
+│   │   ├── protocol/                           # ≈600 lines; non-Tool Wire Protocol
+│   │   │   ├── mod.rs                          # ≈20 lines; module exports
+│   │   │   ├── proto.rs                        # ≈80 lines; protobuf types
+│   │   │   ├── connect.rs                      # ≈150 lines; Connect framing
+│   │   │   ├── json_stream.rs                  # ≈280 lines; JSON stream
+│   │   │   └── events.rs                       # ≈300 lines; real-time downstream messages
 │   │   │
-│   │   ├── prompting/                          # ≈650 行；Prompt 编译
-│   │   │   ├── mod.rs                          # ≈20 行；模块导出
-│   │   │   ├── compiler.rs                     # ≈120 行；PromptSpec 编译
-│   │   │   ├── catalog.rs                      # ≈100 行；Prompt 目录
-│   │   │   ├── assets.rs                       # ≈220 行；资源加载
-│   │   │   └── derived_state.rs                # ≈190 行；稳定派生上下文
+│   │   ├── prompting/                          # ≈650 lines; Prompt compilation
+│   │   │   ├── mod.rs                          # ≈20 lines; module exports
+│   │   │   ├── compiler.rs                     # ≈120 lines; PromptSpec compilation
+│   │   │   ├── catalog.rs                      # ≈100 lines; Prompt catalog
+│   │   │   ├── assets.rs                       # ≈220 lines; asset loading
+│   │   │   └── derived_state.rs                # ≈190 lines; stable derived context
 │   │   │
-│   │   └── services/                           # ≈2,800 行；非 Agent Loop 服务
-│   │       ├── mod.rs                          # ≈30 行；模块导出
-│   │       ├── account.rs                      # ≈470 行；账号信息
-│   │       ├── analytics.rs                    # ≈240 行；Analytics
-│   │       ├── blob_sync.rs                    # ≈320 行；Blob 同步
-│   │       ├── context_sync.rs                 # ≈200 行；上下文同步
-│   │       ├── model_catalog.rs                # ≈730 行；模型目录
-│   │       ├── observability.rs                # ≈230 行；Cursor Trace
-│   │       ├── tab.rs                          # ≈80 行；Tab 信息
-│   │       └── usage.rs                        # ≈350 行；用量统计
+│   │   └── services/                           # ≈2,800 lines; non-Agent-Loop services
+│   │       ├── mod.rs                          # ≈30 lines; module exports
+│   │       ├── account.rs                      # ≈470 lines; account info
+│   │       ├── analytics.rs                    # ≈240 lines; Analytics
+│   │       ├── blob_sync.rs                    # ≈320 lines; Blob sync
+│   │       ├── context_sync.rs                 # ≈200 lines; context sync
+│   │       ├── model_catalog.rs                # ≈730 lines; model catalog
+│   │       ├── observability.rs                # ≈230 lines; Cursor Trace
+│   │       ├── tab.rs                          # ≈80 lines; Tab info
+│   │       └── usage.rs                        # ≈350 lines; usage stats
 │   │
-│   ├── run/                                    # ≈2,400 行；通用 Agent Loop
-│   │   ├── mod.rs                              # ≈30 行；公共接口
-│   │   ├── engine.rs                           # ≈550 行；Loop 主流程
-│   │   ├── handle.rs                           # ≈180 行；RunHandle/RunPhase
-│   │   ├── command.rs                          # ≈180 行；RunCommand/CommandResult
-│   │   ├── event.rs                            # ≈180 行；RunEvent/RunOutcome
-│   │   ├── model_cycle.rs                      # ≈380 行；单次 LLM 调用
-│   │   ├── tool_round.rs                       # ≈320 行；单轮 Tool 调用
-│   │   ├── messages.rs                         # ≈220 行；幂等追加消息
-│   │   ├── compaction.rs                       # ≈260 行；显式上下文压缩
-│   │   └── port.rs                             # ≈100 行；外部端口
+│   ├── run/                                    # ≈2,400 lines; generic Agent Loop
+│   │   ├── mod.rs                              # ≈30 lines; public interface
+│   │   ├── engine.rs                           # ≈550 lines; main loop flow
+│   │   ├── handle.rs                           # ≈180 lines; RunHandle/RunPhase
+│   │   ├── command.rs                          # ≈180 lines; RunCommand/CommandResult
+│   │   ├── event.rs                            # ≈180 lines; RunEvent/RunOutcome
+│   │   ├── model_cycle.rs                      # ≈380 lines; a single LLM call
+│   │   ├── tool_round.rs                       # ≈320 lines; a single Tool call round
+│   │   ├── messages.rs                         # ≈220 lines; idempotent message append
+│   │   ├── compaction.rs                       # ≈260 lines; explicit context compaction
+│   │   └── port.rs                             # ≈100 lines; external ports
 │   │
-│   ├── model/                                  # ≈1,900 行；公共数据类型
-│   │   ├── mod.rs                              # ≈30 行；模块导出
-│   │   ├── conversation.rs                     # ≈100 行；Conversation 类型
-│   │   ├── checkpoint.rs                       # ≈80 行；Checkpoint 类型
-│   │   ├── message.rs                          # ≈180 行；Message 类型
-│   │   ├── run.rs                              # ≈100 行；Run 类型
-│   │   ├── tool.rs                             # ≈100 行；ToolCall/ToolResult
-│   │   ├── inference.rs                        # ≈150 行；模型请求和响应
-│   │   ├── projection.rs                       # ≈180 行；Provider 输入消息
-│   │   ├── configuration.rs                    # ≈550 行；模型配置
-│   │   ├── observability.rs                    # ≈300 行；调用观测
-│   │   ├── token_count.rs                      # ≈50 行；Token 统计
-│   │   └── tool_result_replay.rs               # ≈230 行；ToolResult 恢复
+│   ├── model/                                  # ≈1,900 lines; shared data types
+│   │   ├── mod.rs                              # ≈30 lines; module exports
+│   │   ├── conversation.rs                     # ≈100 lines; Conversation types
+│   │   ├── checkpoint.rs                       # ≈80 lines; Checkpoint types
+│   │   ├── message.rs                          # ≈180 lines; Message types
+│   │   ├── run.rs                              # ≈100 lines; Run types
+│   │   ├── tool.rs                             # ≈100 lines; ToolCall/ToolResult
+│   │   ├── inference.rs                        # ≈150 lines; model requests and responses
+│   │   ├── projection.rs                       # ≈180 lines; Provider input messages
+│   │   ├── configuration.rs                    # ≈550 lines; model configuration
+│   │   ├── observability.rs                    # ≈300 lines; call observability
+│   │   ├── token_count.rs                      # ≈50 lines; Token counting
+│   │   └── tool_result_replay.rs               # ≈230 lines; ToolResult recovery
 │   │
-│   ├── provider/                               # ≈3,000 行；Provider 适配
-│   │   ├── mod.rs                              # ≈80 行；Provider trait
-│   │   ├── router.rs                           # ≈230 行；Provider 路由
-│   │   ├── event.rs                            # ≈100 行；统一流事件
-│   │   ├── normalize.rs                        # ≈50 行；响应归一化
-│   │   ├── retry.rs                            # ≈270 行；重试
-│   │   ├── recorder.rs                         # ≈600 行；调用记录
-│   │   ├── anthropic.rs                        # ≈500 行；Anthropic
-│   │   ├── openai_chat.rs                      # ≈580 行；Chat Completions
-│   │   └── openai_responses.rs                 # ≈650 行；Responses
+│   ├── provider/                               # ≈3,000 lines; Provider adaptation
+│   │   ├── mod.rs                              # ≈80 lines; Provider trait
+│   │   ├── router.rs                           # ≈230 lines; Provider routing
+│   │   ├── event.rs                            # ≈100 lines; unified stream events
+│   │   ├── normalize.rs                        # ≈50 lines; response normalization
+│   │   ├── retry.rs                            # ≈270 lines; retries
+│   │   ├── recorder.rs                         # ≈600 lines; call recording
+│   │   ├── anthropic.rs                        # ≈500 lines; Anthropic
+│   │   ├── openai_chat.rs                      # ≈580 lines; Chat Completions
+│   │   └── openai_responses.rs                 # ≈650 lines; Responses
 │   │
-│   ├── store/                                  # ≈4,100 行；本地持久化
-│   │   ├── mod.rs                              # ≈40 行；Store 接口
-│   │   ├── sqlite.rs                           # ≈60 行；SQLite 初始化
-│   │   ├── writer.rs                           # ≈30 行；串行写事务
-│   │   ├── cas.rs                              # ≈120 行；并发写检查
-│   │   ├── conversations.rs                    # ≈180 行；Conversation
-│   │   ├── checkpoints.rs                      # ≈400 行；Checkpoint
-│   │   ├── messages.rs                         # ≈150 行；Message 和幂等
-│   │   ├── runs.rs                             # ≈300 行；Run
-│   │   ├── tool_rounds.rs                      # ≈330 行；Tool Round
-│   │   ├── input_anchors.rs                    # ≈60 行；输入去重
-│   │   ├── llm_calls.rs                        # ≈650 行；LLM 调用记录
-│   │   ├── models.rs                           # ≈430 行；模型配置
-│   │   ├── settings.rs                         # ≈430 行；应用设置
-│   │   ├── storage.rs                          # ≈230 行；Blob 存储
-│   │   ├── cursor_traces.rs                    # ≈400 行；Cursor Trace
-│   │   └── overview.rs                         # ≈350 行；控制台查询
+│   ├── store/                                  # ≈4,100 lines; local persistence
+│   │   ├── mod.rs                              # ≈40 lines; Store interface
+│   │   ├── sqlite.rs                           # ≈60 lines; SQLite initialization
+│   │   ├── writer.rs                           # ≈30 lines; serialized write transactions
+│   │   ├── cas.rs                              # ≈120 lines; concurrent write checks
+│   │   ├── conversations.rs                    # ≈180 lines; Conversation
+│   │   ├── checkpoints.rs                      # ≈400 lines; Checkpoint
+│   │   ├── messages.rs                         # ≈150 lines; Messages and idempotency
+│   │   ├── runs.rs                             # ≈300 lines; Run
+│   │   ├── tool_rounds.rs                      # ≈330 lines; Tool Round
+│   │   ├── input_anchors.rs                    # ≈60 lines; input dedup
+│   │   ├── llm_calls.rs                        # ≈650 lines; LLM call records
+│   │   ├── models.rs                           # ≈430 lines; model configuration
+│   │   ├── settings.rs                         # ≈430 lines; app settings
+│   │   ├── storage.rs                          # ≈230 lines; Blob storage
+│   │   ├── cursor_traces.rs                    # ≈400 lines; Cursor Trace
+│   │   └── overview.rs                         # ≈350 lines; console queries
 │   │
-│   ├── control/                                # ≈2,100 行；管理端 API
-│   │   ├── mod.rs                              # ≈30 行；模块导出
-│   │   ├── service.rs                          # ≈500 行；管理端服务
-│   │   ├── settings.rs                         # ≈350 行；设置接口
-│   │   ├── models.rs                           # ≈350 行；模型接口
-│   │   ├── overview.rs                         # ≈300 行；概览
-│   │   ├── calls.rs                            # ≈250 行；调用记录
-│   │   ├── ads.rs                              # ≈150 行；广告配置
-│   │   └── harness.rs                          # ≈170 行；Harness 控制
+│   ├── control/                                # ≈2,100 lines; admin API
+│   │   ├── mod.rs                              # ≈30 lines; module exports
+│   │   ├── service.rs                          # ≈500 lines; admin service
+│   │   ├── settings.rs                         # ≈350 lines; settings API
+│   │   ├── models.rs                           # ≈350 lines; models API
+│   │   ├── overview.rs                         # ≈300 lines; overview
+│   │   ├── calls.rs                            # ≈250 lines; call records
+│   │   └── harness.rs                          # ≈170 lines; Harness control
 │   │
-│   ├── search/                                 # ≈1,400 行；搜索能力
-│   │   ├── mod.rs                              # ≈30 行；模块导出
-│   │   ├── engine.rs                           # ≈350 行；搜索入口
-│   │   ├── catalog.rs                          # ≈250 行；搜索服务目录
-│   │   ├── federation.rs                       # ≈280 行；聚合搜索
-│   │   ├── fetch.rs                            # ≈250 行；网页获取
-│   │   └── search_provider.rs                  # ≈240 行；搜索 Provider
+│   ├── search/                                 # ≈1,400 lines; search capability
+│   │   ├── mod.rs                              # ≈30 lines; module exports
+│   │   ├── engine.rs                           # ≈350 lines; search entry
+│   │   ├── catalog.rs                          # ≈250 lines; search service catalog
+│   │   ├── federation.rs                       # ≈280 lines; federated search
+│   │   ├── fetch.rs                            # ≈250 lines; web page fetch
+│   │   └── search_provider.rs                  # ≈240 lines; search Provider
 │   │
-│   └── local_app/                              # ≈1,000 行；本地运行环境
-│       ├── mod.rs                              # ≈100 行；local_app 入口（原Harness）
-│       ├── account.rs                          # ≈150 行；账号
-│       ├── proxy.rs                            # ≈250 行；代理
-│       ├── settings.rs                         # ≈200 行；设置
-│       └── ca/                                 # ≈300 行；证书
-│           ├── mod.rs                          # ≈250 行；CA 实现
-│           └── windows.rs                      # ≈50 行；Windows 支持
+│   └── local_app/                              # ≈1,000 lines; local runtime environment
+│       ├── mod.rs                              # ≈100 lines; local_app entry (formerly Harness)
+│       ├── account.rs                          # ≈150 lines; account
+│       ├── proxy.rs                            # ≈250 lines; proxy
+│       ├── settings.rs                         # ≈200 lines; settings
+│       └── ca/                                 # ≈300 lines; certificates
+│           ├── mod.rs                          # ≈250 lines; CA implementation
+│           └── windows.rs                      # ≈50 lines; Windows support
 │
-└── tests/                                      # ≈3,500 行；跨模块行为测试
-    ├── conversation_delivery.rs                # ≈400 行；消息投递时序
-    ├── interrupt.rs                            # ≈400 行；Break 和取消
-    ├── error_lifecycle.rs                      # ≈300 行；终态唯一性
-    ├── checkpoint_recovery.rs                  # ≈350 行；恢复
-    ├── prefix_stability.rs                     # ≈450 行；前缀稳定
-    ├── compaction.rs                           # ≈300 行；压缩
-    ├── tool_round.rs                           # ≈450 行；Tool Round
-    └── connect_wire.rs                         # ≈300 行；Wire Protocol
+└── tests/                                      # ≈3,500 lines; cross-module behavior tests
+    ├── conversation_delivery.rs                # ≈400 lines; message delivery ordering
+    ├── interrupt.rs                            # ≈400 lines; Break and cancel
+    ├── error_lifecycle.rs                      # ≈300 lines; terminal-state uniqueness
+    ├── checkpoint_recovery.rs                  # ≈350 lines; recovery
+    ├── prefix_stability.rs                     # ≈450 lines; prefix stability
+    ├── compaction.rs                           # ≈300 lines; compaction
+    ├── tool_round.rs                           # ≈450 lines; Tool Round
+    └── connect_wire.rs                         # ≈300 lines; Wire Protocol
 ```
 
-## 顶层架构
+## Top-level architecture
 
 ```text
                               Cursor Client
                     ┌──────────────┴──────────────┐
                     │                             │
-                Bidi 上行                     RunSSE 下行
+                Bidi uplink                  RunSSE downlink
                     │                             ▲
                     ▼                             │
           ┌──────────────────────┐                │
@@ -257,8 +256,9 @@ server/
 │ Checkpoint                                                  │
 │ Transport bindings                                          │
 │                                                             │
-│ 唯一负责：                                                  │
-│ 创建 Run / 投递 Message / Cancel / RunOutcome / 输出终态    │
+│ Sole responsibility:                                        │
+│ create Run / deliver Message / Cancel / RunOutcome /        │
+│ terminal output                                             │
 └──────────────┬────────────────┬─────────────────────────────┘
                │                │
          RunCommand            Checkpoint
@@ -285,7 +285,7 @@ server/
                                 └──────────────────┘
 ```
 
-## 上行主链路
+## Uplink main path
 
 ```text
 BidiAppendRequest
@@ -316,7 +316,7 @@ ConversationRuntime
 current_run
 ```
 
-## 下行主链路
+## Downlink main path
 
 ```text
 RunEvent
@@ -344,7 +344,7 @@ conversation/output.rs
        CheckpointWorker
 ```
 
-## Message 编译
+## Message compilation
 
 ```text
 Cursor Action
@@ -364,29 +364,30 @@ CompiledMessages
      └── BreakMessages
 ```
 
-## Message 投递
+## Message delivery
 
 ```text
-                         Ignore        InsertMessages       BreakMessages
+                         Ignore        InsertMessages        BreakMessages
 
-Run 开始前              丢弃          initial_messages     initial_messages
+Before Run starts        drop          initial_messages      initial_messages
 
-Run 运行中              丢弃          等当前 cycle 完成    取消当前 cycle
-                                      后追加               后追加
+Run running              drop          append after the      cancel the current
+                                       current cycle         cycle, then append
+                                       completes
 
-Run Finalizing          丢弃          pending_messages     pending_messages
+Run Finalizing           drop          pending_messages      pending_messages
 
-Run 结束后              丢弃          启动下一个 Run       启动下一个 Run
+After Run ends           drop          start the next Run    start the next Run
 ```
 
-带 `target_run_id` 时：
+When `target_run_id` is present:
 
 ```text
 target_run_id == current_run_id
-└── 按 delivery 消费
+└── consumed per delivery
 
 target_run_id != current_run_id
-└── StaleTarget，忽略
+└── StaleTarget, ignored
 ```
 
 ## RunEngine
@@ -395,19 +396,19 @@ target_run_id != current_run_id
 RunEngine
 │
 ├── Running
-│   ├── 接受 InsertMessages
-│   ├── 接受 BreakMessages
-│   ├── 接受 ToolResult
-│   └── 接受 Cancel
+│   ├── accepts InsertMessages
+│   ├── accepts BreakMessages
+│   ├── accepts ToolResult
+│   └── accepts Cancel
 │
 ├── Finalizing
-│   ├── 拒绝新消息
-│   ├── 提交最终 Message
-│   ├── 等待 Checkpoint barrier
-│   └── 返回 RunClosing
+│   ├── rejects new messages
+│   ├── commits the final Message
+│   ├── waits for the Checkpoint barrier
+│   └── returns RunClosing
 │
 └── Ended
-    └── 返回 RunEnded
+    └── returns RunEnded
 ```
 
 ```text
@@ -428,42 +429,42 @@ CommandResult
 ## InsertMessages
 
 ```text
-同一个 Run
+Same Run
 │
-├── LLM Call #1 正在执行
+├── LLM Call #1 in flight
 │       │
-│       └── 收到 InsertMessages
+│       └── receives InsertMessages
 │               └── pending_insertions
 │
-├── LLM Call #1 完成
-├── 提交 Assistant Message
-├── 追加 InsertMessages
-├── 持久化 Checkpoint
+├── LLM Call #1 completes
+├── commits Assistant Message
+├── appends InsertMessages
+├── persists Checkpoint
 └── LLM Call #2
 ```
 
-不会创建新 Run。
+No new Run is created.
 
 ## BreakMessages
 
 ```text
-同一个 Run
+Same Run
 │
-├── LLM Call / Tool Round 正在执行
+├── LLM Call / Tool Round in flight
 │       │
-│       └── 收到 BreakMessages
+│       └── receives BreakMessages
 │
-├── 取消当前 cycle
-├── 中止未完成 Tool
-├── 写入 interrupted ToolResult
-├── 追加 BreakMessages
-├── 持久化 Checkpoint
-└── 重新进入 Model Cycle
+├── cancels the current cycle
+├── aborts unfinished Tools
+├── writes an interrupted ToolResult
+├── appends BreakMessages
+├── persists Checkpoint
+└── re-enters the Model Cycle
 ```
 
-取消的是当前 cycle，不是整个 Run。
+Cancellation targets the current cycle, not the whole Run.
 
-## Tool 链路
+## Tool path
 
 ```text
 RunEngine
@@ -497,23 +498,23 @@ ToolResult
 RunEngine
 ```
 
-Tool 的 Cursor Wire Protocol：
+Tool Cursor Wire Protocol:
 
 ```text
 ToolCall
 ├── tools/codec/query.rs
 │       └── InteractionQuery
 ├── tools/codec/render.rs
-│       └── Cursor Tool 卡片
+│       └── Cursor Tool card
 ├── tools/codec/request.rs
-│       └── Exec 请求
+│       └── Exec request
 └── tools/codec/response.rs
-        └── Exec 响应
+        └── Exec response
 ```
 
-## Checkpoint 链路
+## Checkpoint path
 
-持久化：
+Persistence:
 
 ```text
 Conversation Messages
@@ -537,7 +538,7 @@ Checkpoint
 Cursor ConversationState
 ```
 
-恢复：
+Recovery:
 
 ```text
 Cursor ConversationState
@@ -555,19 +556,19 @@ Conversation Messages
 PreparedRun
 ```
 
-稳定性：
+Stability:
 
 ```text
-没有压缩
-└── 之前的 Message 不修改、不删除、不重排
-    └── 新 Message 只追加
+Without compaction
+└── previous Messages are not modified, deleted, or reordered
+    └── new Messages are only appended
 
-发生压缩
-└── 显式替换 Checkpoint roots
-    └── 保留最新稳定上下文
+With compaction
+└── explicitly replaces Checkpoint roots
+    └── keeps the latest stable context
 ```
 
-## Cancel 链路
+## Cancel path
 
 ```text
 Bidi Cancel / RunSSE Disconnect / Shutdown
@@ -594,17 +595,17 @@ Bidi Cancel / RunSSE Disconnect / Shutdown
              OutputHub.close
 ```
 
-只有 `ConversationRuntime` 可以：
+Only `ConversationRuntime` can:
 
 ```text
 Cancel current_run
-结束 Tool
-发送 terminal
-关闭 OutputHub
-删除 request_id 路由
+terminate Tools
+send terminal
+close OutputHub
+remove request_id routing
 ```
 
-## 模块依赖
+## Module dependencies
 
 ```text
 api
@@ -642,7 +643,7 @@ store
 └── model
 ```
 
-禁止反向依赖：
+Reverse dependencies are forbidden:
 
 ```text
 run       ─X→ cursor
@@ -654,7 +655,7 @@ model     ─X→ cursor
 
 
 
-## 最终核心
+## Core summary
 
 ```text
 Bidi

@@ -20,7 +20,7 @@ use cursor_server::{
     model::{ContentPart, ModelConfigInput, ModelType, ProjectedContent, OPENAI_CHAT_ENDPOINT},
     network::NetworkClients,
     provider::{FinishReason, ModelEvent},
-    store::{CommitPromptLocale, CommitSettings, DEFAULT_COMMIT_PROMPT_ZH_CN},
+    store::{CommitSettings, DEFAULT_COMMIT_PROMPT},
 };
 use tower::ServiceExt;
 
@@ -48,7 +48,7 @@ fn model_input(model_id: &str) -> ModelConfigInput {
         base_url: "https://example.com/v1".into(),
         use_full_url: false,
         api_key: "test-key".into(),
-        tooltip_data: "模型介绍".into(),
+        tooltip_data: "Model info".into(),
         model_id: model_id.into(),
         reasoning_effort: None,
         openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
@@ -85,7 +85,7 @@ async fn post_commit_message(
 fn diff_request(diff: &str) -> ai::WriteGitCommitMessageRequest {
     ai::WriteGitCommitMessageRequest {
         diffs: vec![diff.into()],
-        previous_commit_messages: vec!["feat: 上一次提交".into()],
+        previous_commit_messages: vec!["feat: previous commit".into()],
         explicit_context: None,
     }
 }
@@ -101,14 +101,13 @@ async fn commit_message_is_generated_through_configured_model() {
         .set_commit_settings(CommitSettings {
             model_id: created.model_hash.clone(),
             prompt: String::new(),
-            prompt_locale: CommitPromptLocale::ZhCn,
         })
         .await
         .unwrap();
     let provider = fake_provider::FakeProvider::default();
     provider.push(vec![
         ModelEvent::TextStart,
-        ModelEvent::TextDelta("```\nCommit message: feat: 新增提交引擎\n```".into()),
+        ModelEvent::TextDelta("```\nCommit message: feat: add commit engine\n```".into()),
         ModelEvent::TextEnd,
         ModelEvent::Done(FinishReason::Stop),
     ]);
@@ -119,13 +118,13 @@ async fn commit_message_is_generated_through_configured_model() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
     let decoded: ai::WriteGitCommitMessageResponse = prost::Message::decode(&body[..]).unwrap();
-    assert_eq!(decoded.commit_message, "feat: 新增提交引擎");
+    assert_eq!(decoded.commit_message, "feat: add commit engine");
 
     let requests = provider.requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(
         requests[0].prompt.instructions,
-        DEFAULT_COMMIT_PROMPT_ZH_CN.trim()
+        DEFAULT_COMMIT_PROMPT.trim()
     );
     let ProjectedContent::Parts(parts) = &requests[0].history[0].content else {
         panic!("expected user text parts");
@@ -134,7 +133,7 @@ async fn commit_message_is_generated_through_configured_model() {
         panic!("expected text part");
     };
     assert!(text.contains("diff --git a/engine.rs"));
-    assert!(text.contains("- feat: 上一次提交"));
+    assert!(text.contains("- feat: previous commit"));
 }
 
 #[tokio::test]
@@ -147,14 +146,13 @@ async fn custom_prompt_and_model_from_commit_settings_are_used() {
     store
         .set_commit_settings(CommitSettings {
             model_id: created.model_hash,
-            prompt: "自定义提交提示词".into(),
-            prompt_locale: CommitPromptLocale::ZhCn,
+            prompt: "custom commit prompt".into(),
         })
         .await
         .unwrap();
     let provider = fake_provider::FakeProvider::default();
     provider.push(vec![
-        ModelEvent::TextDelta("chore: 清理旧代码".into()),
+        ModelEvent::TextDelta("chore: clean up old code".into()),
         ModelEvent::Done(FinishReason::Stop),
     ]);
     let router = commit_router(store, provider.clone()).await;
@@ -164,10 +162,10 @@ async fn custom_prompt_and_model_from_commit_settings_are_used() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
     let decoded: ai::WriteGitCommitMessageResponse = prost::Message::decode(&body[..]).unwrap();
-    assert_eq!(decoded.commit_message, "chore: 清理旧代码");
+    assert_eq!(decoded.commit_message, "chore: clean up old code");
     assert_eq!(
         provider.requests()[0].prompt.instructions,
-        "自定义提交提示词"
+        "custom commit prompt"
     );
 }
 
@@ -182,7 +180,6 @@ async fn empty_diffs_are_rejected_when_generating() {
         .set_commit_settings(CommitSettings {
             model_id: created.model_hash,
             prompt: String::new(),
-            prompt_locale: CommitPromptLocale::ZhCn,
         })
         .await
         .unwrap();
@@ -208,7 +205,6 @@ async fn tool_call_events_are_rejected() {
         .set_commit_settings(CommitSettings {
             model_id: created.model_hash,
             prompt: String::new(),
-            prompt_locale: CommitPromptLocale::ZhCn,
         })
         .await
         .unwrap();
@@ -235,7 +231,6 @@ async fn unconfigured_model_is_rejected() {
         .set_commit_settings(CommitSettings {
             model_id: "missing-hash".into(),
             prompt: String::new(),
-            prompt_locale: CommitPromptLocale::ZhCn,
         })
         .await
         .unwrap();

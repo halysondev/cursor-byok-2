@@ -11,7 +11,6 @@ import { appStore, useAppStore } from "../../shared/store/appStore";
 import { formatTimeInput, parseTimeInput } from "../../shared/utils/parseTimeInput";
 import { modelProviderName } from "../../shared/utils/modelProvider";
 import { claudeIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
-import { useI18n } from "../../i18n/store";
 
 type TimeRange = { startMs: number; endMs: number };
 
@@ -54,7 +53,6 @@ function presetRange(preset: Exclude<OverviewRangePreset, "custom">, now = new D
 
 export function HomePage() {
   const { overview, busy, models, plugins } = useAppStore();
-  const { locale } = useI18n();
   const [preset, setPreset] = useState<OverviewRangePreset>("month");
   const [quick, setQuick] = useState<QuickPreset | null>(null);
   const [customRange, setCustomRange] = useState<TimeRange | null>(null);
@@ -151,7 +149,7 @@ export function HomePage() {
       provider.configured ? provider.models.filter((model) => model.enabled).map((model) => ({
         value: model.id,
         label: model.displayName,
-        group: pluginText(provider.displayName, locale) || model.pluginName,
+        group: pluginText(provider.displayName) || model.pluginName,
         iconSrc: model.icon || undefined,
         icon: model.icon ? undefined : flatColorOrganizationIcon,
       })) : [],
@@ -198,6 +196,6 @@ export function HomePage() {
       onCustomApply={applyCustom}
       onRefresh={() => void refresh()}
     /></PageActions>
-    <PageContent title={t("概览")} sections={sections} />
+    <PageContent title={"Summary"} sections={sections} />
   </>;
 }

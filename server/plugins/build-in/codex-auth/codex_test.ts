@@ -186,7 +186,7 @@ Deno.test("reset card action lists safe card metadata and optional expiry", asyn
     expiresAtMs: Date.parse("2026-07-12T01:33:14Z"),
     fields: [{
       id: "reset-type",
-      label: { "en-US": "Reset type", "zh-CN": "重置类型" },
+      label: "Reset type",
       value: "codex_rate_limits",
     }],
   }]);
@@ -389,7 +389,7 @@ Deno.test("invoke streams normalized events from the Codex Responses API", async
   assert(!("max_output_tokens" in body), "Codex endpoint rejects max_output_tokens");
   assertEquals(body.service_tier, "priority");
   assertEquals(body.prompt_cache_key, "conversation-1");
-  // 缓存亲和头与 prompt_cache_key 同源。
+  // The cache-affinity headers and prompt_cache_key share one source.
   assertEquals(requestHeaders["session-id"], "conversation-1");
   assertEquals(requestHeaders["thread-id"], "conversation-1");
   assertEquals(requestHeaders["x-client-request-id"], "conversation-1");
