@@ -1,0 +1,17 @@
+{
+  "apiVersion": 1,
+  "id": "dev.cursorbyok.examples.claude-auth",
+  "name": "Claude",
+  "version": "0.2.0",
+  "author": "@leookun",
+  "minAppVersion": "0.1.0",
+  "icon": "assets/claude.svg",
+  "entry": "main.ts",
+  "permissions": {
+    "network": [
+      "claude.com",
+      "platform.claude.com",
+      "api.anthropic.com"
+    ]
+  }
+}
