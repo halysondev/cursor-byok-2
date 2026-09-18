@@ -13,6 +13,7 @@ import {
   buildCCRequest,
   buildForwardToolMap,
   buildReverseLookup,
+  CC_VERSION,
   OAUTH_BETA,
   outboundHeaders,
   resolveEffort,
@@ -137,9 +138,8 @@ const MODEL_HAIKU = "claude-haiku-4-5";
 // ---------------------------------------------------------------------------
 
 Deno.test("billing tag matches CC's format", () => {
-  const tag = buildBillingTag("2.1.273");
-  assert(tag.startsWith(BILLING_TAG_HEAD + "2.1.273."));
-  assert(tag.startsWith(BILLING_TAG_HEAD + "2.1.273."));
+  const tag = buildBillingTag(CC_VERSION);
+  assert(tag.startsWith(BILLING_TAG_HEAD + CC_VERSION + "."));
   // Current CC sends no cch token.
   assertEquals(/\bcch=/.test(tag), false);
 });
