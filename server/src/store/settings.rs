@@ -9,9 +9,15 @@ const PORT_SETTINGS_KEY: &str = "network_ports";
 const PROXY_SETTINGS_KEY: &str = "outbound_proxy";
 const TAB_SETTINGS_KEY: &str = "cursor_tab";
 const DESKTOP_SETTINGS_KEY: &str = "desktop_lifecycle";
+const COMPACTION_SETTINGS_KEY: &str = "conversation_compaction";
+
+pub const MIN_COMPACTION_RESERVE_TOKENS: u64 = 50_000;
+pub const MAX_COMPACTION_RESERVE_TOKENS: u64 = 150_000;
+pub const DEFAULT_COMPACTION_RESERVE_TOKENS: u64 = 100_000;
 const COMMIT_SETTINGS_KEY: &str = "commit_settings";
 const CURSOR_TAKEOVER_ENABLED_KEY: &str = "cursor_takeover_enabled";
 const PRICING_SETTINGS_KEY: &str = "token_pricing";
+const SUBAGENT_ROUTING_KEY: &str = "subagent_routing";
 
 /// Embedded default system prompt for commit message generation.
 pub const DEFAULT_COMMIT_PROMPT: &str = include_str!("../../prompt/cursor/commit/prompt.md");
@@ -80,6 +86,32 @@ pub struct DesktopSettings {
     pub show_dock_icon: bool,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct CompactionSettings {
+    pub reserve_tokens: u64,
+}
+
+impl Default for CompactionSettings {
+    fn default() -> Self {
+        Self {
+            reserve_tokens: DEFAULT_COMPACTION_RESERVE_TOKENS,
+        }
+    }
+}
+
+impl CompactionSettings {
+    fn validate(self) -> Result<Self> {
+        if !(MIN_COMPACTION_RESERVE_TOKENS..=MAX_COMPACTION_RESERVE_TOKENS)
+            .contains(&self.reserve_tokens)
+        {
+            return Err(crate::Error::Config(format!(
+                "compaction reserve tokens must be between {MIN_COMPACTION_RESERVE_TOKENS} and {MAX_COMPACTION_RESERVE_TOKENS}"
+            )));
+        }
+        Ok(self)
+    }
+}
+
 impl Default for DesktopSettings {
     fn default() -> Self {
         Self {
@@ -128,6 +160,40 @@ impl CommitSettings {
             DEFAULT_COMMIT_PROMPT.trim()
         } else {
             trimmed
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct SubagentRoutingSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub target_model_id: String,
+    #[serde(default = "default_model_aliases")]
+    pub model_aliases: std::collections::BTreeMap<String, String>,
+    #[serde(default = "default_true")]
+    pub apply_to_subagents: bool,
+    #[serde(default)]
+    pub apply_to_normal_chats: bool,
+}
+
+fn default_model_aliases() -> std::collections::BTreeMap<String, String> {
+    let mut aliases = std::collections::BTreeMap::new();
+    aliases.insert("composer-2.5-fast".into(), "".into());
+    aliases.insert("composer-2.5".into(), "".into());
+    aliases.insert("default".into(), "".into());
+    aliases
+}
+
+impl Default for SubagentRoutingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            target_model_id: String::new(),
+            model_aliases: default_model_aliases(),
+            apply_to_subagents: true,
+            apply_to_normal_chats: false,
         }
     }
 }
@@ -371,6 +437,37 @@ impl Store {
         Ok(())
     }
 
+    pub async fn compaction_settings(&self) -> Result<CompactionSettings> {
+        let value = sqlx::query_scalar::<_, String>(
+            "SELECT value_json FROM service_settings WHERE setting_key = ?",
+        )
+        .bind(COMPACTION_SETTINGS_KEY)
+        .fetch_optional(&self.pool)
+        .await?;
+        value
+            .map(|value| {
+                serde_json::from_str::<CompactionSettings>(&value).map_err(crate::Error::from)
+            })
+            .unwrap_or_else(|| Ok(CompactionSettings::default()))?
+            .validate()
+    }
+
+    pub async fn set_compaction_settings(
+        &self,
+        settings: CompactionSettings,
+    ) -> Result<CompactionSettings> {
+        let settings = settings.validate()?;
+        let value_json = serde_json::to_string(&settings)?;
+        let _write = self.writes.lock().await;
+        sqlx::query("INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms")
+            .bind(COMPACTION_SETTINGS_KEY)
+            .bind(value_json)
+            .bind(now_ms())
+            .execute(&self.pool)
+            .await?;
+        Ok(settings)
+    }
+
     pub async fn commit_settings(&self) -> Result<CommitSettings> {
         let value = sqlx::query_scalar::<_, String>(
             "SELECT value_json FROM service_settings WHERE setting_key = ?",
@@ -399,6 +496,65 @@ impl Store {
         .execute(&self.pool)
         .await?;
         Ok(settings)
+    }
+
+    pub async fn subagent_routing_settings(&self) -> Result<SubagentRoutingSettings> {
+        let value = sqlx::query_scalar::<_, String>(
+            "SELECT value_json FROM service_settings WHERE setting_key = ?",
+        )
+        .bind(SUBAGENT_ROUTING_KEY)
+        .fetch_optional(&self.pool)
+        .await?;
+        value
+            .map(|value| serde_json::from_str(&value).map_err(Into::into))
+            .unwrap_or_else(|| Ok(SubagentRoutingSettings::default()))
+    }
+
+    pub async fn set_subagent_routing_settings(
+        &self,
+        settings: SubagentRoutingSettings,
+    ) -> Result<SubagentRoutingSettings> {
+        let value_json = serde_json::to_string(&settings)?;
+        let _write = self.writes.lock().await;
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(SUBAGENT_ROUTING_KEY)
+        .bind(value_json)
+        .bind(now_ms())
+        .execute(&self.pool)
+        .await?;
+        Ok(settings)
+    }
+
+    /// Resolves a user-facing model query (plugin id, configured hash, display
+    /// name, or model id) to the configured model hash used on the Cursor wire.
+    pub async fn resolve_model_hash(&self, query: &str) -> Result<Option<String>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(None);
+        }
+        if query.starts_with(crate::plugin::ADAPTER_ID_PREFIX) {
+            return Ok(Some(query.to_owned()));
+        }
+        if self.model(query).await?.is_some() {
+            return Ok(Some(query.to_owned()));
+        }
+        let models = self.models().await?;
+        for model in &models {
+            if model.display_name.eq_ignore_ascii_case(query)
+                || model.model_id.eq_ignore_ascii_case(query)
+                || model.model_hash.eq_ignore_ascii_case(query)
+            {
+                return Ok(Some(model.model_hash.clone()));
+            }
+        }
+        Ok(None)
+    }
+
+    pub async fn first_model_hash(&self) -> Result<Option<String>> {
+        let models = self.models().await?;
+        Ok(models.first().map(|model| model.model_hash.clone()))
     }
 
     pub async fn pricing_settings(&self) -> Result<TokenPricingSettings> {

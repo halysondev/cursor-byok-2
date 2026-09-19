@@ -205,6 +205,70 @@ export async function refreshAccount(
 }
 
 // ---------------------------------------------------------------------------
+// Preparation (model-sync / pre-invoke token refresh)
+// ---------------------------------------------------------------------------
+
+/**
+ * Prepares the account before the host uses its snapshot (model sync, first
+ * request after startup): refreshes the access token when it is inside the
+ * refresh buffer, so the snapshot carries a live token. The refreshed tokens
+ * are returned as a patch the host persists — Anthropic rotates the refresh
+ * token on every refresh, so a refresh whose result is discarded would kill
+ * the account. Returns null when the stored token is comfortably valid.
+ *
+ * Refresh attempts mirror the proxy reference: up to three tries with
+ * exponential backoff; terminal failures (invalid_grant / 401 / 403) surface
+ * as an invalid state, transient ones cool briefly and retry later.
+ */
+export async function prepareAccount(
+  resource: ResourceSnapshot,
+  _rejectedResource: ResourceSnapshot | null,
+  context: PluginContext,
+): Promise<ResourcePatch | null> {
+  const data = accountData(resource);
+  const now = Date.now();
+  if (data.expiresAtMs !== null && data.expiresAtMs > now + REFRESH_BUFFER_MS) {
+    return null;
+  }
+  if (!data.refreshToken) {
+    return {
+      state: { status: "invalid", message: "Claude refresh token is missing; sign in again" },
+    };
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+    try {
+      const tokens = await refreshTokens(context, data.refreshToken);
+      const fresh: AccountData = {
+        ...data,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAtMs: tokens.expiresAtMs,
+        scopes: tokens.scopes,
+        // The refresh-token wall is measured from the ORIGINAL grant.
+        grantedAt: data.grantedAt,
+      };
+      return { privateData: fresh as unknown as JsonValue, state: { status: "ready" } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = Number(message.match(/HTTP (\d{3})/)?.[1] ?? 0);
+      if (isTerminalRefreshFailure(status, message)) {
+        return {
+          state: { status: "invalid", message: "Claude authorization expired; sign in again" },
+        };
+      }
+    }
+  }
+  return {
+    state: {
+      status: "cooling",
+      retryAtMs: Date.now() + 15_000,
+      message: "Claude token refresh temporarily unavailable; retry shortly",
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot → resource state / view
 // ---------------------------------------------------------------------------
 

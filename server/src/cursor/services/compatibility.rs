@@ -36,6 +36,15 @@ pub async fn user_privacy_mode(
     route(&proxy, request, EmptyResponse {}).await
 }
 
+// The built-in local BYOK identity has no Cursor organization. Real account
+// tokens must still fetch their policies from Cursor rather than losing them.
+pub async fn team_configuration(
+    Extension(proxy): Extension<CursorProxy>,
+    request: Request<Body>,
+) -> Result<Response<Body>> {
+    route(&proxy, request, EmptyResponse {}).await
+}
+
 pub async fn update_conversation_metadata(
     Extension(proxy): Extension<CursorProxy>,
     request: Request<Body>,

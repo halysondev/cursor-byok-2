@@ -24,7 +24,7 @@ use crate::{
     provider::{is_valid_response_event, ModelEvent, Provider},
     store::{
         CommitSettings, DesktopSettings, PortSettings, ProxySettings, ProxySettingsInput,
-        StatisticsStorage, Store, TabSettings, TokenPricingSettings,
+        StatisticsStorage, Store, SubagentRoutingSettings, TabSettings, TokenPricingSettings,
     },
     Error, Result,
 };
@@ -296,6 +296,14 @@ impl ControlService {
 
     pub async fn reorder_models(&self, model_hashes: &[String]) -> Result<Vec<ModelConfig>> {
         self.store.reorder_models(model_hashes).await
+    }
+
+    pub async fn set_models_enabled(
+        &self,
+        model_hashes: &[String],
+        enabled: bool,
+    ) -> Result<Vec<ModelConfig>> {
+        self.store.set_models_enabled(model_hashes, enabled).await
     }
 
     pub async fn delete_model(&self, model_hash: &str) -> Result<()> {
@@ -658,6 +666,17 @@ impl ControlService {
         self.store.tab_settings().await
     }
 
+    pub async fn cursor_model_aliases(&self) -> Result<std::collections::BTreeMap<String, String>> {
+        self.store.cursor_model_aliases().await
+    }
+
+    pub async fn set_cursor_model_aliases(
+        &self,
+        aliases: std::collections::BTreeMap<String, String>,
+    ) -> Result<std::collections::BTreeMap<String, String>> {
+        self.store.set_cursor_model_aliases(aliases).await
+    }
+
     pub async fn set_tab_settings(&self, settings: TabSettings) -> Result<TabSettings> {
         self.cursor_harness.set_tab_settings(settings).await
     }
@@ -687,6 +706,17 @@ impl ControlService {
         settings: TokenPricingSettings,
     ) -> Result<TokenPricingSettings> {
         self.store.set_pricing_settings(settings).await
+    }
+
+    pub async fn subagent_routing(&self) -> Result<SubagentRoutingSettings> {
+        self.store.subagent_routing_settings().await
+    }
+
+    pub async fn set_subagent_routing(
+        &self,
+        settings: SubagentRoutingSettings,
+    ) -> Result<SubagentRoutingSettings> {
+        self.store.set_subagent_routing_settings(settings).await
     }
 }
 

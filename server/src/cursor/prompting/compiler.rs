@@ -11,11 +11,34 @@ use super::{assets::runtime_expression, Mode, PromptAssets};
 #[derive(Clone)]
 pub struct PromptCompiler {
     assets: PromptAssets,
+    compaction_prompt_path: Option<std::path::PathBuf>,
+    /// Storage root of the rules service; its stored global rules are
+    /// appended to every compiled prompt. The rules directory doubles as the
+    /// prompt source, so no lock is taken — reads are fs-only.
+    global_rules_dir: Option<std::path::PathBuf>,
 }
 
 impl PromptCompiler {
     pub fn new(assets: PromptAssets) -> Self {
-        Self { assets }
+        Self {
+            assets,
+            compaction_prompt_path: None,
+            global_rules_dir: None,
+        }
+    }
+
+    pub fn with_compaction_prompt_path(assets: PromptAssets, path: std::path::PathBuf) -> Self {
+        Self {
+            assets,
+            compaction_prompt_path: Some(path),
+            global_rules_dir: None,
+        }
+    }
+
+    /// Appends the stored global user rules to every compiled prompt.
+    pub fn with_global_rules_dir(mut self, directory: std::path::PathBuf) -> Self {
+        self.global_rules_dir = Some(directory);
+        self
     }
 
     pub fn runtime_message(&self, mode: Mode, values: &BTreeMap<&str, String>) -> Result<String> {
@@ -40,14 +63,40 @@ impl PromptCompiler {
             .display_name
             .as_deref()
             .unwrap_or(model.model_id.as_str());
+        let prompt = match (mode, &self.compaction_prompt_path) {
+            (Mode::Compaction, Some(path)) => crate::config::compaction_prompt_override_at(path)?
+                .unwrap_or_else(|| self.assets.mode(mode).prompt.clone()),
+            _ => self.assets.mode(mode).prompt.clone(),
+        };
         Ok(PromptSpec {
             instructions: self
-                .assets
-                .mode(mode)
-                .prompt
-                .replace("{{FAKE_MODEL_NAME}}", fake_model_name),
+                .append_global_rules(prompt.replace("{{FAKE_MODEL_NAME}}", fake_model_name))?,
             tools,
         })
+    }
+
+    /// Appends the global user-rules section to the compiled instructions.
+    /// Rules are shared across every mode and conversation; an empty store or
+    /// a missing rules directory leaves the prompt untouched.
+    fn append_global_rules(&self, mut instructions: String) -> Result<String> {
+        let Some(directory) = &self.global_rules_dir else {
+            return Ok(instructions);
+        };
+        let rules = crate::cursor::services::knowledge::RuleStore::open(directory.clone())
+            .and_then(|store| crate::cursor::services::knowledge::system_prompt_section(&store));
+        let rules = match rules {
+            Ok(rules) => rules,
+            Err(error) => {
+                tracing::warn!(%error, "cannot read global rules; continuing without them");
+                return Ok(instructions);
+            }
+        };
+        eprintln!("DBG append_global_rules: len={}", rules.len());
+        if !rules.is_empty() {
+            instructions.push_str("\n\n");
+            instructions.push_str(&rules);
+        }
+        Ok(instructions)
     }
 
     fn tools(&self, mode: Mode, suppress_subagent_progress: bool) -> Vec<ToolDefinition> {

@@ -1,4 +1,6 @@
 //! Implements Cursor HTTP endpoints outside the Agent Run stream.
+use std::time::Duration;
+
 use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{DefaultBodyLimit, Extension, State},
@@ -23,10 +25,12 @@ use crate::{
             account, analytics, commit_message, compatibility, entitlement::FreeEntitlementCache,
             knowledge, model_catalog, server_config, tab,
         },
-        transport::{TransportParent, TransportRegistry},
+        transport::{TransportParent, TransportRegistry, TransportRoute},
     },
     Result,
 };
+
+const INITIAL_APPEND_WAIT: Duration = Duration::from_secs(30);
 
 pub fn router(
     registry: TransportRegistry,
@@ -59,6 +63,14 @@ fn router_with_proxy(
         .route(
             "/aiserver.v1.DashboardService/GetUserPrivacyMode",
             post(compatibility::user_privacy_mode),
+        )
+        .route(
+            "/aiserver.v1.DashboardService/GetTeamReposOrEmptyIfNotInTeam",
+            post(compatibility::team_configuration),
+        )
+        .route(
+            "/aiserver.v1.DashboardService/GetTeamAdminSettingsOrEmptyIfNotInTeam",
+            post(compatibility::team_configuration),
         )
         .route(
             "/agent.v1.AgentService/UpdateConversationMetadata",
@@ -150,6 +162,10 @@ fn router_with_proxy(
             post(knowledge::remove),
         )
         .route(
+            "/aiserver.v1.AiService/FetchRelevantKnowledgeForConversation",
+            post(knowledge::relevant),
+        )
+        .route(
             analytics::BOOTSTRAP_STATSIG_PATH,
             post(analytics::bootstrap_statsig),
         )
@@ -232,7 +248,23 @@ async fn bidi_handler(
 ) -> Result<Response<Body>> {
     let (parts, body) = buffered(request).await?;
     let request: ai::BidiAppendRequest = connect::decode_unary(&body)?;
-    let decoded = bidi::decode(&request)?;
+    let mut decoded = bidi::decode(&request)?;
+    decoded.resolve_model_aliases(registry.store()).await?;
+    decoded
+        .resolve_subagent_and_model_aliases(registry.store(), &parts.headers)
+        .await?;
+    if decoded.model_id().is_none() {
+        // A model-less first message is Cursor asking the backend to apply the
+        // account default (the review agent does this). Resolve it the BYOK
+        // way: the routing target, else the first configured model.
+        if let Some(default) = decoded.ensure_default_model(registry.store()).await? {
+            tracing::info!(
+                request_id = decoded.request_id,
+                model_id = %default,
+                "model-less request routed to the default BYOK model"
+            );
+        }
+    }
     let first_model = decoded.model_id().map(str::to_owned);
     let conversation_id = decoded.conversation_id().map(str::to_owned);
     let trace_metadata = decoded.trace_metadata();
@@ -260,16 +292,29 @@ async fn bidi_handler(
         true
     } else if registry.upstream(&decoded.request_id).await {
         false
+    } else if decoded.seqno > 0 {
+        // BidiAppend uploads are concurrent. A small heartbeat can arrive before
+        // the much larger seqno=0 RunRequest has finished uploading/decoding.
+        // Wait for its model-selected route; never guess local vs upstream.
+        let route = tokio::time::timeout(
+            INITIAL_APPEND_WAIT,
+            registry.wait_route(&decoded.request_id),
+        )
+        .await
+        .map_err(|_| {
+            crate::Error::Protocol(
+                "timed out waiting for the initial BidiAppend model selection".into(),
+            )
+        })?;
+        matches!(route, TransportRoute::Local)
     } else {
-        trace.resume();
-        trace.request(
-            "bidi_request",
-            body.clone(),
-            trace_outcome(trace_metadata, false, "missing_transport", None),
+        // No model selection and no configured BYOK model to default to:
+        // let the official upstream apply the account default.
+        tracing::info!(
+            request_id = decoded.request_id,
+            "model-less request with no configured BYOK model routed to Cursor upstream"
         );
-        return Err(crate::Error::Protocol(
-            "first BidiAppend message must select a model".into(),
-        ));
+        false
     };
     if first_model.is_some() {
         trace.begin(

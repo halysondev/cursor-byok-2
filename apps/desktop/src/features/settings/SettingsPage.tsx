@@ -5,6 +5,7 @@ import { LegacyModelImport } from "../models/LegacyModelImport";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
 import { CommitSettingsCard } from "./CommitSettingsCard";
 import { PricingSettingsCard } from "./PricingSettingsCard";
+import { SubagentSettingsCard } from "./SubagentSettingsCard";
 import { ProxySettingsCard } from "./ProxySettingsCard";
 import { TabSettingsCard } from "./TabSettingsCard";
 import { Button } from "../../shared/ui/Button";
@@ -227,6 +228,7 @@ export function SettingsPage() {
       <TabSettingsCard settings={tabSettings} draft={tabDraft} editing={editingTab} saving={savingTab} onDraftChange={setTabDraft} onEdit={editTab} onCancel={cancelTabEdit} onSave={() => void saveTab()} />
       <CommitSettingsCard />
       <PricingSettingsCard />
+      <SubagentSettingsCard />
       <AppLifecycleSettingsCard />
       <LegacyModelImport>{({ busy, previewing, open }) => <TitledCard title={"Import"}>
         <div className={styles.importRow}>

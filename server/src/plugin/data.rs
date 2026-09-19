@@ -162,13 +162,7 @@ fn write_once(
         .map_err(|error| ("sync temporary file", error))?;
     drop(file);
     let _ = set_file_permissions(temporary);
-    // rename on Windows does not overwrite an existing file, so delete the old one first.
-    #[cfg(windows)]
-    match std::fs::remove_file(target) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(("remove previous file", error)),
-    }
+    // Replace atomically. Never delete the last valid rotated credential before replacement.
     std::fs::rename(temporary, target).map_err(|error| ("replace target file", error))?;
     let _ = set_file_permissions(target);
     Ok(())

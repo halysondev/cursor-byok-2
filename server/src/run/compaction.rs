@@ -21,17 +21,20 @@ const FALLBACK_CHARS: usize = 12_000;
 /// actual, a 7% shortfall that landed it over a 1M window while the check said
 /// there was room. A proportional reserve absorbs that drift and scales with
 /// the model: a 200K window keeps 20K free and a 1M window keeps 100K.
-const CONTEXT_RESERVE_DIVISOR: u64 = 10;
 pub(super) const OUTPUT_TOKENS: u64 = 4_096;
+
 pub(super) const INSTRUCTIONS: &str = "Summarize the conversation for the next model turn. Preserve goals, constraints, decisions, files, commands, errors, results, and unfinished work. Do not call tools. Return only the concise durable summary.";
 
-/// Usable prompt budget: the window minus the proportional reserve.
-pub(super) fn context_budget(context_window: u64) -> u64 {
-    context_window.saturating_sub(context_window / CONTEXT_RESERVE_DIVISOR)
+/// Usable prompt budget: the window minus the configured reserve.
+pub(super) fn context_budget(context_window: u64, reserve_tokens: u64) -> u64 {
+    context_window.saturating_sub(reserve_tokens)
 }
 
-pub(super) fn input_budget(prepared: &PreparedRun) -> Option<u64> {
-    prepared.model.context_window_tokens.map(context_budget)
+pub(super) fn input_budget(prepared: &PreparedRun, reserve_tokens: u64) -> Option<u64> {
+    prepared
+        .model
+        .context_window_tokens
+        .map(|window| context_budget(window, reserve_tokens))
 }
 
 /// Whether a provider failure means the prompt did not fit.
@@ -69,9 +72,10 @@ pub(super) fn is_context_overflow(message: &str) -> bool {
 pub(super) fn compaction_history(
     history: Vec<ProjectedMessage>,
     context_window: Option<u64>,
+    reserve_tokens: u64,
 ) -> Vec<ProjectedMessage> {
     super::history::user_terminated(
-        trim_to_context(history, context_window),
+        trim_to_context(history, context_window, reserve_tokens),
         "compaction:instruction",
         INSTRUCTIONS,
     )
@@ -80,10 +84,11 @@ pub(super) fn compaction_history(
 fn trim_to_context(
     mut history: Vec<ProjectedMessage>,
     context_window: Option<u64>,
+    reserve_tokens: u64,
 ) -> Vec<ProjectedMessage> {
     let Some(budget) = context_window
         .filter(|window| *window > 0)
-        .map(context_budget)
+        .map(|window| context_budget(window, reserve_tokens))
         .map(|budget| budget.saturating_sub(OUTPUT_TOKENS))
         .filter(|budget| *budget > 0)
     else {
@@ -140,8 +145,9 @@ pub(super) fn compaction_estimate(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
     anchor: Option<ContextUsageAnchor>,
+    reserve_tokens: u64,
 ) -> Option<u64> {
-    let budget = input_budget(prepared)?;
+    let budget = input_budget(prepared, reserve_tokens)?;
     let estimated = estimated_tokens(prepared, projected_messages, anchor);
     (estimated > budget).then_some(estimated)
 }
@@ -151,16 +157,18 @@ pub(super) fn should_compact(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
     anchor: Option<ContextUsageAnchor>,
+    reserve_tokens: u64,
 ) -> bool {
-    compaction_estimate(prepared, projected_messages, anchor).is_some()
+    compaction_estimate(prepared, projected_messages, anchor, reserve_tokens).is_some()
 }
 
 pub(super) fn validate_compacted(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
+    reserve_tokens: u64,
 ) -> std::result::Result<u64, String> {
     let estimated = estimate_context_tokens(&prepared.prompt, projected_messages);
-    let Some(budget) = input_budget(prepared) else {
+    let Some(budget) = input_budget(prepared, reserve_tokens) else {
         return Ok(estimated);
     };
     if estimated <= budget {
@@ -235,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn automatic_compaction_uses_proportional_reserve_for_every_action() {
+    fn automatic_compaction_uses_the_configured_reserve_for_every_action() {
         let messages = vec![CanonicalMessage::text(
             "user",
             Role::User,
@@ -244,20 +252,40 @@ mod tests {
         )];
         let projected = project_messages(&messages).unwrap();
         let estimated = estimate_context_tokens(&prepared(1).prompt, &projected);
-        // Smallest multiple-of-ten window whose 90% budget covers the estimate.
-        let window = estimated.div_ceil(9) * 10;
+        // Smallest window whose budget (window - reserve) covers the estimate.
+        let window = estimated + crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS;
         let mut prepared = prepared(window);
-        assert!(context_budget(window) >= estimated);
-        assert!(context_budget(window - 10) < estimated);
+        assert!(
+            context_budget(window, crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS) >= estimated
+        );
+        assert!(
+            context_budget(window - 10, crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS)
+                < estimated
+        );
 
-        assert!(!should_compact(&prepared, &projected, None));
+        assert!(!should_compact(
+            &prepared,
+            &projected,
+            None,
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS
+        ));
         prepared.model.context_window_tokens = Some(window - 10);
-        assert!(should_compact(&prepared, &projected, None));
+        assert!(should_compact(
+            &prepared,
+            &projected,
+            None,
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS
+        ));
 
         prepared.action = RunAction::Resume {
             pending_tool_round: None,
         };
-        assert!(should_compact(&prepared, &projected, None));
+        assert!(should_compact(
+            &prepared,
+            &projected,
+            None,
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS
+        ));
     }
 
     #[test]
@@ -280,16 +308,18 @@ mod tests {
         assert!(should_compact(
             &prepared(1_000_000),
             &projected,
-            Some(anchor)
+            Some(anchor),
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
         ));
     }
 
     #[test]
-    fn the_reserve_scales_with_the_window() {
-        assert_eq!(context_budget(200_000), 180_000);
-        assert_eq!(context_budget(1_000_000), 900_000);
-        assert_eq!(context_budget(0), 0);
-        assert_eq!(context_budget(1), 1);
+    fn the_reserve_is_subtracted_from_the_window() {
+        let reserve = crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS;
+        assert_eq!(context_budget(200_000, reserve), 200_000 - reserve);
+        assert_eq!(context_budget(reserve, reserve), 0);
+        assert_eq!(context_budget(0, reserve), 0);
+        assert_eq!(context_budget(1, reserve), 0);
     }
 
     #[test]
@@ -340,7 +370,11 @@ mod tests {
         // Providers reject an assistant-terminated history as a prefill, which
         // made every automatic compaction fall back to the truncated summary.
         let history = vec![user("u1", "question"), assistant("a1", "answer")];
-        let prepared = compaction_history(history, Some(200_000));
+        let prepared = compaction_history(
+            history,
+            Some(200_000),
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
+        );
         assert_eq!(prepared.last().unwrap().role, Role::User);
         assert_eq!(
             prepared.last().unwrap().message_id,
@@ -349,7 +383,11 @@ mod tests {
 
         // An already user-terminated history is left alone.
         let history = vec![assistant("a1", "answer"), user("u2", "next")];
-        let prepared = compaction_history(history.clone(), Some(200_000));
+        let prepared = compaction_history(
+            history.clone(),
+            Some(200_000),
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
+        );
         assert_eq!(prepared, history);
     }
 
@@ -364,10 +402,15 @@ mod tests {
             user("u2", &big),
             assistant("a2", "recent answer"),
         ];
-        let window = 200_000;
-        let prepared = compaction_history(history, Some(window));
+        let window = 280_000;
+        let prepared = compaction_history(
+            history,
+            Some(window),
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
+        );
 
-        let budget = context_budget(window) - OUTPUT_TOKENS;
+        let budget =
+            context_budget(window, crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS) - OUTPUT_TOKENS;
         assert!(estimate_projected_messages_tokens(&prepared) <= budget);
         assert_eq!(prepared.last().unwrap().role, Role::User);
         // The newest turn survives the trim and is never split.
@@ -387,7 +430,11 @@ mod tests {
             user("u2", &"x".repeat(400_000)),
             assistant("a2", "answer"),
         ];
-        let prepared = compaction_history(history, Some(50_000));
+        let prepared = compaction_history(
+            history,
+            Some(160_000),
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
+        );
         assert_eq!(prepared[0].message_id, "u2");
         assert_eq!(prepared.last().unwrap().role, Role::User);
     }
@@ -395,7 +442,11 @@ mod tests {
     #[test]
     fn compaction_history_without_a_context_window_is_untouched_apart_from_termination() {
         let history = vec![user("u1", "question"), assistant("a1", "answer")];
-        let prepared = compaction_history(history.clone(), None);
+        let prepared = compaction_history(
+            history.clone(),
+            None,
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
+        );
         assert_eq!(prepared[..2], history[..]);
         assert_eq!(prepared.last().unwrap().role, Role::User);
     }
@@ -418,9 +469,10 @@ mod tests {
             expected
         );
         assert!(!should_compact(
-            &prepared(200_000),
+            &prepared(400_000),
             &projected,
-            Some(anchor)
+            Some(anchor),
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
         ));
     }
 
@@ -438,7 +490,8 @@ mod tests {
             Some(ContextUsageAnchor {
                 context_input_tokens: 180_000,
                 message_count: 1,
-            })
+            }),
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS,
         ));
     }
 
@@ -493,16 +546,29 @@ mod tests {
         )];
         let projected = project_messages(&messages).unwrap();
         let estimated = estimate_context_tokens(&prepared(1).prompt, &projected);
-        let window = estimated.div_ceil(9) * 10;
-        assert!(context_budget(window) >= estimated);
-        assert!(context_budget(window - 10) < estimated);
+        let window = estimated + crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS;
+        assert!(
+            context_budget(window, crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS) >= estimated
+        );
+        assert!(
+            context_budget(window - 10, crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS)
+                < estimated
+        );
 
         assert_eq!(
-            validate_compacted(&prepared(window), &projected),
+            validate_compacted(
+                &prepared(window),
+                &projected,
+                crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS
+            ),
             Ok(estimated)
         );
-        assert!(validate_compacted(&prepared(window - 10), &projected)
-            .unwrap_err()
-            .contains("context overflow after compaction"));
+        assert!(validate_compacted(
+            &prepared(window - 10),
+            &projected,
+            crate::store::DEFAULT_COMPACTION_RESERVE_TOKENS
+        )
+        .unwrap_err()
+        .contains("context overflow after compaction"));
     }
 }

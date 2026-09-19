@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::store::{
     CommitSettings, DesktopSettings, PortSettings, ProxySettings, ProxySettingsInput,
-    StatisticsStorage, StatisticsStorageScope, TabSettings, TokenPricingSettings,
-    DEFAULT_COMMIT_PROMPT,
+    StatisticsStorage, StatisticsStorageScope, SubagentRoutingSettings, TabSettings,
+    TokenPricingSettings, DEFAULT_COMMIT_PROMPT,
 };
 
 use super::{ControlService, ObservabilitySettings};
@@ -68,6 +68,19 @@ pub async fn update_proxy(
 
 pub async fn get_tab(State(service): State<ControlService>) -> Result<Json<TabSettings>> {
     Ok(Json(service.tab_settings().await?))
+}
+
+pub async fn get_model_aliases(
+    State(service): State<ControlService>,
+) -> Result<Json<std::collections::BTreeMap<String, String>>> {
+    Ok(Json(service.cursor_model_aliases().await?))
+}
+
+pub async fn update_model_aliases(
+    State(service): State<ControlService>,
+    Json(aliases): Json<std::collections::BTreeMap<String, String>>,
+) -> Result<Json<std::collections::BTreeMap<String, String>>> {
+    Ok(Json(service.set_cursor_model_aliases(aliases).await?))
 }
 
 pub async fn update_tab(
@@ -134,4 +147,17 @@ pub async fn update_pricing_settings(
     Json(settings): Json<TokenPricingSettings>,
 ) -> Result<Json<TokenPricingSettings>> {
     Ok(Json(service.set_pricing_settings(settings).await?))
+}
+
+pub async fn get_subagent_routing(
+    State(service): State<ControlService>,
+) -> Result<Json<SubagentRoutingSettings>> {
+    Ok(Json(service.subagent_routing().await?))
+}
+
+pub async fn update_subagent_routing(
+    State(service): State<ControlService>,
+    Json(settings): Json<SubagentRoutingSettings>,
+) -> Result<Json<SubagentRoutingSettings>> {
+    Ok(Json(service.set_subagent_routing(settings).await?))
 }

@@ -7,7 +7,9 @@ use std::os::unix::fs::PermissionsExt;
 use crate::{Error, Result};
 
 const DATA_DIR_NAME: &str = ".cursor-byok-v3";
+const COMPACTION_PROMPT_PATH: &str = "prompts/compaction.md";
 const DATABASE_FILE_NAME: &str = "cursor-byok.db";
+const GLOBAL_RULES_DIR_NAME: &str = "rules/global";
 const V0049_DATA_DIR_NAME: &str = ".cursor-local-assistant-v2";
 const V0049_CONFIG_FILE_NAME: &str = "config.yaml";
 const DEFAULT_PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(60 * 60);
@@ -29,6 +31,33 @@ pub fn v0049_config_path() -> Result<PathBuf> {
     Ok(home_dir
         .join(V0049_DATA_DIR_NAME)
         .join(V0049_CONFIG_FILE_NAME))
+}
+
+pub fn compaction_prompt_path() -> Result<PathBuf> {
+    Ok(managed_data_dir()?.join(COMPACTION_PROMPT_PATH))
+}
+
+/// The directory storing the global user rules injected into every prompt.
+/// Distinct from the rules service's storage root (`rules/`): this is the
+/// `rules/global` subtree, the rules shared across every conversation.
+pub fn global_rules_dir() -> Result<PathBuf> {
+    Ok(managed_data_dir()?.join(GLOBAL_RULES_DIR_NAME))
+}
+
+pub fn compaction_prompt_override() -> Result<Option<String>> {
+    compaction_prompt_override_at(&compaction_prompt_path()?)
+}
+
+pub(crate) fn compaction_prompt_override_at(path: &std::path::Path) -> Result<Option<String>> {
+    match fs::read_to_string(path) {
+        Ok(prompt) if prompt.trim().is_empty() => Ok(None),
+        Ok(prompt) => Ok(Some(prompt)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(Error::Config(format!(
+            "cannot read compaction prompt at {}: {error}",
+            path.display()
+        ))),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,6 +194,21 @@ mod tests {
         assert_eq!(
             DEFAULT_PROVIDER_REQUEST_TIMEOUT,
             Duration::from_secs(60 * 60)
+        );
+    }
+
+    #[test]
+    fn compaction_prompt_override_is_optional_and_reloaded() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("compaction.md");
+
+        assert_eq!(compaction_prompt_override_at(&path).unwrap(), None);
+        fs::write(&path, "  \n").unwrap();
+        assert_eq!(compaction_prompt_override_at(&path).unwrap(), None);
+        fs::write(&path, "custom prompt").unwrap();
+        assert_eq!(
+            compaction_prompt_override_at(&path).unwrap().as_deref(),
+            Some("custom prompt")
         );
     }
 }

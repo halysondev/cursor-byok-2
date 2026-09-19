@@ -121,6 +121,10 @@ pub fn api_router(service: ControlService) -> Router {
             get(models::preview_v0049).post(models::import_v0049),
         )
         .route("/__byok-api__/api/models/order", put(models::reorder))
+        .route(
+            "/__byok-api__/api/models/enabled",
+            put(models::set_enabled),
+        )
         .route("/__byok-api__/api/overview", get(overview::get))
         .route(
             "/__byok-api__/api/models/{model_hash}",
@@ -210,6 +214,14 @@ pub fn api_router(service: ControlService) -> Router {
         .route(
             "/__byok-api__/api/settings/pricing",
             get(settings::get_pricing_settings).put(settings::update_pricing_settings),
+        )
+        .route(
+            "/__byok-api__/api/settings/subagent-routing",
+            get(settings::get_subagent_routing).put(settings::update_subagent_routing),
+        )
+        .route(
+            "/__byok-api__/api/settings/cursor-model-aliases",
+            get(settings::get_model_aliases).put(settings::update_model_aliases),
         )
         .route(
             "/__byok-api__/api/harness/cursor/status",

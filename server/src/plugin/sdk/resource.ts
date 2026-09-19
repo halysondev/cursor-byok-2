@@ -186,8 +186,18 @@ export type ResourceSupport = {
   import?: ResourceImportSupport;
   present(resource: ResourceSnapshot): ResourceView;
   actions?: ResourceAction[];
+  /** Runs before use. The host serializes this per account and persists its patch before proceeding.
+   * rejectedResource is the snapshot rejected with HTTP 401, or null for a normal expiry check.
+   */
+  prepare?(
+    resource: ResourceSnapshot,
+    rejectedResource: ResourceSnapshot | null,
+    context: PluginContext,
+  ): Promise<ResourcePatch | null>;
   /** Re-reads upstream state (quota, credential validity) when the user triggers it. */
   refresh?(resource: ResourceSnapshot, context: PluginContext): Promise<ResourcePatch>;
+  /** Optional background refresh interval; without it the host never auto-refreshes. */
+  refreshIntervalMs?: number;
   /** Optional upstream revocation; the host deletes the local record afterwards. */
   remove?(resource: ResourceSnapshot, context: PluginContext): Promise<void>;
 };

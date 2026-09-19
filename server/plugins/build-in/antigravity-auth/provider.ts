@@ -1,47 +1,46 @@
 import type {
-  LlmContentPart,
   LlmMessage,
-  LlmRequest,
   ProviderInvokeInput,
   ProviderOutput,
   ProviderResult,
   ProviderSupport,
 } from "cursor-byok:provider";
 import type { JsonValue, PluginContext } from "cursor-byok:plugin";
+import type { ResourcePatch, ResourceSnapshot } from "cursor-byok:resource";
 import { HttpError } from "cursor-byok:protocol/openai-chat";
-import {
-  ANTIGRAVITY_CLIENT_HEADERS,
-  ANTIGRAVITY_ENDPOINTS,
-  ANTIGRAVITY_USER_AGENT,
-  antigravityModels,
-} from "./models.ts";
+import { resolveModelRoute } from "./model_routes.ts";
+import { ANTIGRAVITY_ENDPOINTS, ANTIGRAVITY_USER_AGENT, antigravityModels } from "./models.ts";
 import {
   type AccountData,
   accountData,
   isTokenExpired,
-  quotaExhaustedPatch,
+  prepareAccount as refreshAccessToken,
   refreshAccount,
   RESOURCE_TYPE,
 } from "./resources.ts";
 
+function object(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+/** Error-text form of the quota classification (mirrors isQuotaHttpError). */
 export function isQuotaError(error: string): boolean {
-  const message = error.toLowerCase();
-  return message.includes("resource_exhausted") ||
-    message.includes("quota_exceeded") ||
-    message.includes("quota_exhausted") ||
-    message.includes("rate_limit_exceeded") ||
-    message.includes("rate limit") ||
-    message.includes("model_capacity_exhausted") ||
-    message.includes("too many requests") ||
-    message.includes("429");
+  const body = error.toLowerCase();
+  return body.includes("quota_exhausted") ||
+    body.includes("quota exceeded") ||
+    body.includes("rate_limit_exceeded") ||
+    body.includes("rate limit") ||
+    body.includes("model_capacity_exhausted") ||
+    body.includes("user rate limit exceeded") ||
+    body.includes("too many requests");
 }
 
 function isQuotaHttpError(error: HttpError): boolean {
   if (error.status === 429) return true;
   const body = error.body.toLowerCase();
-  return body.includes("resource_exhausted") ||
-    body.includes("quota_exceeded") ||
-    body.includes("quota_exhausted") ||
+  return body.includes("quota_exhausted") ||
     body.includes("rate_limit_exceeded") ||
     body.includes("rate limit") ||
     body.includes("model_capacity_exhausted") ||
@@ -61,68 +60,6 @@ async function readBody(lines: AsyncIterable<string>): Promise<string> {
   const collected: string[] = [];
   for await (const line of lines) collected.push(line);
   return collected.join("\n");
-}
-
-function resolveAntigravityModel(modelId: string): string {
-  const raw = modelId.trim();
-  const lower = raw.toLowerCase();
-
-  // 1. If explicit tier is already specified in the model ID, pass it directly!
-  if (
-    lower.startsWith("gemini-3.8-flash-") ||
-    lower.startsWith("gemini-3.7-flash-") ||
-    lower.startsWith("gemini-3.6-flash-") ||
-    lower.startsWith("gemini-3.1-pro-") ||
-    lower === "gemini-3.8-flash" ||
-    lower === "gemini-3.7-flash" ||
-    lower === "gemini-3.6-flash" ||
-    lower === "gemini-2.5-flash" ||
-    lower === "gemini-2.5-pro" ||
-    lower === "gemini-2.0-flash" ||
-    lower === "claude-sonnet-4-6" ||
-    lower === "claude-sonnet-4-6-thinking" ||
-    lower === "claude-opus-4-6-thinking" ||
-    lower === "gemini-3.1-flash-image" ||
-    lower === "gpt-oss-120b-medium"
-  ) {
-    if (lower === "gemini-3.1-pro-high") return "gemini-pro-agent";
-    return raw;
-  }
-
-  // 2. Canonical Antigravity-Manager mapping for aliases
-  if (
-    lower === "claude-3-7-sonnet" || lower === "claude-3-5-sonnet" || lower === "claude-sonnet-4-5"
-  ) {
-    return "claude-sonnet-4-6";
-  }
-  if (lower === "claude-3-5-haiku" || lower === "claude-haiku-4") {
-    return "claude-sonnet-4-6";
-  }
-  if (
-    lower === "claude-3-7-opus" || lower === "claude-opus-4" || lower === "claude-opus-4.6" ||
-    lower === "claude-opus-4-5-thinking"
-  ) {
-    return "claude-opus-4-6-thinking";
-  }
-  if (
-    lower === "gpt-4" || lower === "gpt-4o" || lower === "gpt-4o-mini" || lower === "gpt-3.5-turbo"
-  ) {
-    return "gemini-2.5-flash";
-  }
-  if (lower === "gemini-2.5-flash-lite") {
-    return "gemini-2.5-flash";
-  }
-  if (lower === "gemini-3-flash" || lower === "gemini-3.5-flash") {
-    return "gemini-3.7-flash";
-  }
-  if (lower === "gemini-3-pro" || lower === "gemini-3.1-pro") {
-    return "gemini-3.1-pro-preview";
-  }
-  if (lower === "gemini-3-pro-high") {
-    return "gemini-pro-agent";
-  }
-
-  return raw;
 }
 
 function randomHex(length = 8): string {
@@ -309,28 +246,33 @@ function convertToCloudCodeContents(
 async function streamCloudCode(
   accessToken: string,
   projectId: string,
-  modelId: string,
   input: ProviderInvokeInput,
   output: ProviderOutput,
   context: PluginContext,
 ): Promise<void> {
-  const actualModel = resolveAntigravityModel(modelId);
+  if (context.signal.aborted) throw context.signal.reason;
+  const route = resolveModelRoute(input.model, input.request.reasoning.effort);
+  const actualModel = route.id;
+  const tools = input.request.tools.length > 0
+    ? [
+        {
+          functionDeclarations: input.request.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            parameters: sanitizeSchema(t.parameters),
+          })),
+        },
+      ]
+    : undefined;
+  const maxOutputTokens = Math.min(
+    input.request.maxOutputTokens ?? route.maxOutputTokens,
+    route.maxOutputTokens,
+  );
+  const thinkingBudget = Math.min(route.thinkingBudget, Math.max(0, maxOutputTokens - 1));
   const { contents, systemInstruction } = convertToCloudCodeContents(
     input.request.instructions,
     input.request.messages,
   );
-
-  const tools = input.request.tools && input.request.tools.length > 0
-    ? [
-      {
-        functionDeclarations: input.request.tools.map((t) => ({
-          name: t.name,
-          description: t.description || "",
-          parameters: sanitizeSchema(t.parameters),
-        })),
-      },
-    ]
-    : undefined;
 
   const toolConfig = tools
     ? {
@@ -338,20 +280,23 @@ async function streamCloudCode(
     }
     : undefined;
 
+  if (!projectId) {
+    throw new Error("Antigravity account is missing its project ID");
+  }
+
   const payload = {
-    project: projectId || "bamboo-precept-lgxtn",
+    project: projectId,
     model: actualModel,
     userAgent: "antigravity",
     requestType: "agent",
-    requestId: generateRequestId(),
-    enabledCreditTypes: ["GOOGLE_ONE_AI"],
     request: {
-      contents,
-      ...(systemInstruction ? { systemInstruction } : {}),
       ...(tools ? { tools } : {}),
       ...(toolConfig ? { toolConfig } : {}),
       generationConfig: {
-        maxOutputTokens: 65536,
+        maxOutputTokens,
+        ...(thinkingBudget > 0
+          ? { thinkingConfig: { thinkingBudget, includeThoughts: true } }
+          : {}),
       },
     },
   };
@@ -361,7 +306,6 @@ async function streamCloudCode(
     "content-type": "application/json",
     accept: "text/event-stream",
     "user-agent": ANTIGRAVITY_USER_AGENT,
-    ...ANTIGRAVITY_CLIENT_HEADERS,
   };
   if (actualModel.toLowerCase().includes("claude")) {
     headers["anthropic-beta"] =
@@ -372,6 +316,7 @@ async function streamCloudCode(
   let hasEmittedAnyChunk = false;
 
   for (const endpoint of ANTIGRAVITY_ENDPOINTS) {
+    context.signal.throwIfAborted();
     if (hasEmittedAnyChunk) break;
 
     try {
@@ -423,6 +368,8 @@ async function streamCloudCode(
 
         const resp = (json.response as Record<string, unknown> | undefined) ?? json;
         if (!resp) continue;
+        const streamError = (resp.error ?? json.error) as { code?: number } | undefined;
+        if (streamError) throw new HttpError(streamError.code ?? 502, JSON.stringify(streamError));
 
         const usage = resp.usageMetadata as Record<string, number> | undefined;
         if (usage) {
@@ -595,13 +542,15 @@ async function streamCloudCode(
       return;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      if (hasEmittedAnyChunk) {
+      if (
+        hasEmittedAnyChunk || context.signal.aborted ||
+        (lastError instanceof HttpError && lastError.status < 500 &&
+          lastError.status !== 429 && lastError.status !== 404)
+      ) {
         throw lastError;
       }
     }
   }
-
-  if (lastError) throw lastError;
 }
 
 async function invoke(
@@ -624,12 +573,19 @@ async function invoke(
   }
 
   let patchData: AccountData | null = null;
+  let emitted = false;
+  const guardedOutput: ProviderOutput = {
+    emit(event) {
+      emitted = true;
+      output.emit(event);
+    },
+  };
 
   // Auto-refresh token if expired or close to expiration (skew 5 mins)
   if (data.refreshToken && isTokenExpired(data)) {
     try {
-      const refreshed = await refreshAccount(input.resource, context);
-      if (refreshed.privateData) {
+      const refreshed = await refreshAccessToken(data as unknown as ResourceSnapshot, null, context);
+      if (refreshed?.privateData) {
         data = refreshed.privateData as unknown as AccountData;
         patchData = data;
       }
@@ -638,57 +594,56 @@ async function invoke(
     }
   }
 
-  let projectId = data.projectId ?? "bamboo-precept-lgxtn";
+  const projectId = data.projectId;
+  if (!projectId) {
+    return {
+      status: "request-error",
+      message: "Antigravity account is missing its project ID",
+    };
+  }
 
   try {
-    await streamCloudCode(data.accessToken, projectId, input.model.id, input, output, context);
+    await streamCloudCode(
+      data.accessToken,
+      projectId,
+      input,
+      guardedOutput,
+      context,
+    );
     return patchData
       ? {
         status: "completed",
-        patch: { privateData: patchData as unknown as JsonValue, state: { status: "ready" } },
+        patch: { privateData: patchData as unknown as import("cursor-byok:plugin").JsonValue },
       }
       : { status: "completed" };
   } catch (error) {
     if (error instanceof HttpError) {
       if (
-        (error.status === 401 || error.status === 403) && data.refreshToken &&
+        !emitted && (error.status === 401 || error.status === 403) && data.refreshToken &&
         !isQuotaHttpError(error)
       ) {
         try {
-          const refreshed = await refreshAccount(input.resource, context);
-          if (refreshed.privateData) {
+          const refreshed = await refreshAccessToken(data as unknown as ResourceSnapshot, null, context);
+          if (refreshed?.privateData) {
             const freshData = refreshed.privateData as unknown as AccountData;
             const freshProj = freshData.projectId ?? projectId;
             await streamCloudCode(
               freshData.accessToken,
               freshProj,
-              input.model.id,
               input,
-              output,
+              guardedOutput,
               context,
             );
-            return {
-              status: "completed",
-              patch: { privateData: freshData as unknown as JsonValue, state: { status: "ready" } },
-            };
+            return { status: "completed" };
           }
         } catch {
           // Failed refresh
         }
       }
-      if (isQuotaHttpError(error)) {
-        return {
-          status: "resource-error",
-          message: error.message,
-          patch: quotaExhaustedPatch(data, error.body),
-        };
-      }
+      // A model/endpoint capacity error does not invalidate the entire account.
       return { status: "request-error", message: error.message };
     }
     const message = error instanceof Error ? error.message : String(error);
-    if (isQuotaError(message)) {
-      return { status: "resource-error", message, patch: quotaExhaustedPatch(data, message) };
-    }
     return { status: "request-error", message };
   }
 }

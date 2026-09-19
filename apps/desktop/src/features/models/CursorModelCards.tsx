@@ -1,10 +1,12 @@
 import type { IconifyIcon } from "@iconify/react/offline";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Sortable from "sortablejs";
-import type { Model, PluginModelDescriptor } from "../../shared/api";
+import type { Model, PluginDescriptor, PluginModelDescriptor } from "../../shared/api";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
 import { chevronDownIcon, chevronRightIcon, claudeIcon, dragIcon, editIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
+import { Switch } from "../../shared/ui/Switch";
+import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
 import { TruncatedButton } from "../../shared/ui/TruncatedButton";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
@@ -15,14 +17,27 @@ export type CursorModelGroup = {
   key: string;
   label: string;
   icon: IconifyIcon;
+  /** True when at least one model in the group is published to Cursor. */
+  enabled: boolean;
   models: Model[];
+};
+
+export type CursorPluginModelGroup = {
+  key: string;
+  label: string;
+  icon: string;
+  /** True when at least one model in the group is published to Cursor. */
+  enabled: boolean;
+  models: PluginModelDescriptor[];
 };
 
 type CursorModelCardsProps = {
   models: Model[];
-  pluginModels: PluginModelDescriptor[];
+  pluginGroups: CursorPluginModelGroup[];
   grouping: CursorModelGrouping;
   disabled: boolean;
+  /** Key of the group whose switch is busy; only that switch enters a busy state. */
+  busyGroupKey: string | null;
   testingModelHashes: Set<string>;
   testResults: Map<string, CursorModelTestState>;
   onTest: (model: Model) => void;
@@ -33,9 +48,11 @@ type CursorModelCardsProps = {
   onPluginSettings: (model: PluginModelDescriptor) => void;
   onReorder: (modelHashes: string[]) => void;
   onGroupSettings: (group: CursorModelGroup) => void;
+  onSetBuiltinGroupEnabled: (group: CursorModelGroup, enabled: boolean) => void;
+  onSetPluginGroupEnabled: (group: CursorPluginModelGroup, enabled: boolean) => void;
 };
 
-type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "pluginModels" | "onTestPluginModel" | "onPluginSettings"> & {
+type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "pluginGroups" | "busyGroupKey" | "onTestPluginModel" | "onPluginSettings" | "onGroupSettings" | "onSetBuiltinGroupEnabled" | "onSetPluginGroupEnabled"> & {
   sortable: boolean;
 };
 
@@ -46,14 +63,34 @@ export function cursorModelGroups(models: Model[], grouping: Exclude<CursorModel
     const group = groups.get(descriptor.key);
     if (group) {
       group.models.push(model);
+      group.enabled ||= model.enabled;
     } else {
-      groups.set(descriptor.key, { ...descriptor, models: [model] });
+      groups.set(descriptor.key, { ...descriptor, enabled: model.enabled, models: [model] });
     }
   }
   return [...groups.values()];
 }
 
+/** Plugin groups shown on the Cursor page: one group per ready plugin listing all its
+ * models (including hidden ones), so a group stays visible and can be re-enabled. */
+export function cursorPluginModelGroups(plugins: PluginDescriptor[]): CursorPluginModelGroup[] {
+  return plugins.flatMap((plugin) => {
+    const models = plugin.providers
+      .filter((provider) => provider.configured)
+      .flatMap((provider) => provider.models);
+    return models.length > 0
+      ? [{ key: plugin.id, label: plugin.name, icon: plugin.icon, enabled: models.some((model) => model.enabled), models }]
+      : [];
+  });
+}
+
+/** Busy key for a group toggle: builtin and plugin groups may share a name, so the source prefixes it. */
+export function groupToggleKey(source: "builtin" | "plugin", key: string) {
+  return `${source}:${key}`;
+}
+
 export function CursorModelCards(props: CursorModelCardsProps) {
+  const builtinBusy = (key: string) => props.disabled || props.busyGroupKey === groupToggleKey("builtin", key);
   const builtins = props.grouping === "flat"
     ? <div style={{ paddingTop: "10px" }}><ModelGrid {...props} sortable /></div>
     : <div className={styles.modelGroups}>
@@ -62,6 +99,9 @@ export function CursorModelCards(props: CursorModelCardsProps) {
         label={group.label}
         icon={group.icon}
         defaultOpen={false}
+        enabled={group.enabled}
+        busy={builtinBusy(group.key)}
+        onToggleEnabled={props.grouping === "provider" ? (enabled) => props.onSetBuiltinGroupEnabled(group, enabled) : undefined}
         onSettings={props.grouping === "provider" ? () => props.onGroupSettings(group) : undefined}
       >
         {group.models.map((model) => <ModelListRow
@@ -79,11 +119,14 @@ export function CursorModelCards(props: CursorModelCardsProps) {
     </div>;
   return <div className={styles.modelGroups}>
     {builtins}
-    {pluginGroups(props.pluginModels).map((group) => <CollapsibleGroup
-      key={`${props.grouping}:${group.pluginId}`}
-      label={group.pluginName}
+    {props.pluginGroups.map((group) => <CollapsibleGroup
+      key={`${props.grouping}:${group.key}`}
+      label={group.label}
       iconSrc={group.icon}
       defaultOpen={props.grouping === "flat"}
+      enabled={group.enabled}
+      busy={props.disabled || props.busyGroupKey === groupToggleKey("plugin", group.key)}
+      onToggleEnabled={(enabled) => props.onSetPluginGroupEnabled(group, enabled)}
     >
       {group.models.map((model) => <PluginModelRow
         key={model.id}
@@ -98,24 +141,14 @@ export function CursorModelCards(props: CursorModelCardsProps) {
   </div>;
 }
 
-function pluginGroups(models: PluginModelDescriptor[]) {
-  const groups: { pluginId: string; pluginName: string; icon: string; models: PluginModelDescriptor[] }[] = [];
-  for (const model of models) {
-    let group = groups.find((candidate) => candidate.pluginId === model.pluginId);
-    if (!group) {
-      group = { pluginId: model.pluginId, pluginName: model.pluginName, icon: model.icon, models: [] };
-      groups.push(group);
-    }
-    group.models.push(model);
-  }
-  return groups;
-}
-
-function CollapsibleGroup({ label, icon, iconSrc, defaultOpen = true, onSettings, children }: {
+function CollapsibleGroup({ label, icon, iconSrc, defaultOpen = true, enabled, busy, onToggleEnabled, onSettings, children }: {
   label: string;
   icon?: IconifyIcon;
   iconSrc?: string;
   defaultOpen?: boolean;
+  enabled?: boolean;
+  busy?: boolean;
+  onToggleEnabled?: (enabled: boolean) => void;
   onSettings?: () => void;
   children: ReactNode;
 }) {
@@ -132,6 +165,9 @@ function CollapsibleGroup({ label, icon, iconSrc, defaultOpen = true, onSettings
         {iconSrc && <Icon src={iconSrc} size="1.1em" />}
         <span className={styles.groupLabel}>{label}</span>
       </button>
+      {onToggleEnabled && <TooltipTrigger label={enabled ? "Visible to Cursor" : "Hidden from Cursor"}>
+        <Switch size="small" checked={enabled ?? false} disabled={busy} label={`Publish ${label} to Cursor`} onChange={onToggleEnabled} />
+      </TooltipTrigger>}
       {onSettings && <button type="button" className={styles.groupSettings} onClick={onSettings}>
         <Icon icon={editIcon} size="1em" />
         {"Group settings"}

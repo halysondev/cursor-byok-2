@@ -322,9 +322,7 @@ message AgentRunRequest {
   optional bool suggest_next_prompt = 10;
   optional string subagent_type_name = 11;
   optional bool exclude_workspace_context = 12;
-  optional string harness = 13;
-  repeated RequestedModel selected_subagent_models = 14;
-  repeated ModelDetails selected_subagent_model_details = 15;
+  optional bytes harness = 13; // bytes: the client can send non-UTF-8 data here
   optional string conversation_group_id = 16;
   repeated PreFetchedBlob pre_fetched_blobs = 17;
   optional string dev_raw_model_slug = 18;
@@ -5025,9 +5023,7 @@ message PrewarmRequest {
   optional bool suggest_next_prompt = 10;
   optional string subagent_type_name = 11;
   optional bool exclude_workspace_context = 12;
-  optional string harness = 13;
-  repeated RequestedModel selected_subagent_models = 14;
-  repeated ModelDetails selected_subagent_model_details = 15;
+  optional bytes harness = 13; // bytes: the client can send non-UTF-8 data here
   optional string conversation_group_id = 16;
   repeated PreFetchedBlob pre_fetched_blobs = 17;
   optional bool client_supports_inline_images = 18;

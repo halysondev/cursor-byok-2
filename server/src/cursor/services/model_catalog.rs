@@ -41,6 +41,10 @@ struct AvailableModel {
     supports_images: Option<bool>,
     #[prost(bool, optional, tag = "14")]
     supports_max_mode: Option<bool>,
+    #[prost(int32, optional, tag = "15")]
+    context_token_limit: Option<i32>,
+    #[prost(int32, optional, tag = "16")]
+    context_token_limit_for_max_mode: Option<i32>,
     #[prost(string, optional, tag = "17")]
     client_display_name: Option<String>,
     #[prost(string, optional, tag = "18")]
@@ -229,20 +233,34 @@ const EFFORTS: [(&str, &str); 5] = [
 ];
 const DEFAULT_CONTEXT: &str = "200k";
 
-fn context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> {
-    let mut contexts = CONTEXTS
+fn configured_context(context_window_tokens: Option<u64>) -> Option<(String, String)> {
+    let tokens = context_window_tokens?;
+    CONTEXTS
         .into_iter()
+        .find(|(value, _)| parse_token_count(value) == Some(tokens))
         .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
-        .collect::<Vec<_>>();
-    if let Some(tokens) = context_window_tokens {
-        let value = tokens.to_string();
-        let duplicate = contexts
-            .iter()
-            .any(|(existing, _)| parse_token_count(existing) == Some(tokens));
-        if !duplicate {
-            contexts.push((value, format!("{} (Custom)", format_token_count(tokens))));
-        }
+        .or_else(|| Some((tokens.to_string(), format_token_count(tokens))))
+}
+
+fn context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> {
+    let configured = configured_context(context_window_tokens);
+    let mut contexts =
+        Vec::with_capacity(CONTEXTS.len() + if configured.is_some() { 1 } else { 0 });
+    // The configured context leads the list: once configured it takes
+    // priority, so the picker surfaces it first and Cursor defaults to it.
+    if let Some(context) = configured.as_ref() {
+        contexts.push(context.clone());
     }
+    contexts.extend(
+        CONTEXTS
+            .into_iter()
+            .filter(|(value, _)| {
+                configured
+                    .as_ref()
+                    .is_none_or(|(configured_value, _)| configured_value.as_str() != *value)
+            })
+            .map(|(value, display_name)| (value.to_owned(), display_name.to_owned())),
+    );
     contexts
 }
 
@@ -251,7 +269,7 @@ pub async fn available_models(
     Extension(proxy): Extension<CursorProxy>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
-    let models = registry.store().models().await?;
+    let models = published_models(registry.store().models().await?);
     let plugin_models = match registry.plugins() {
         Some(plugins) => plugins.configured_models().await,
         None => Vec::new(),
@@ -286,7 +304,7 @@ pub async fn usable_models(
     Extension(proxy): Extension<CursorProxy>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
-    let models = registry.store().models().await?;
+    let models = published_models(registry.store().models().await?);
     let plugin_models = match registry.plugins() {
         Some(plugins) => plugins.configured_models().await,
         None => Vec::new(),
@@ -316,7 +334,7 @@ pub async fn usable_models(
 pub async fn default_model_for_cli(
     State(registry): State<TransportRegistry>,
 ) -> Result<Response<Body>> {
-    let models = registry.store().models().await?;
+    let models = published_models(registry.store().models().await?);
     let plugin_models = configured_plugin_models(&registry).await;
     Ok(local_response(
         agent::GetDefaultModelForCliResponse {
@@ -327,7 +345,7 @@ pub async fn default_model_for_cli(
 }
 
 pub async fn default_model(State(registry): State<TransportRegistry>) -> Result<Response<Body>> {
-    let models = registry.store().models().await?;
+    let models = published_models(registry.store().models().await?);
     let plugin_models = configured_plugin_models(&registry).await;
     Ok(local_response(
         default_model_response(&models, &plugin_models).encode_to_vec(),
@@ -337,11 +355,18 @@ pub async fn default_model(State(registry): State<TransportRegistry>) -> Result<
 pub async fn default_model_nudge(
     State(registry): State<TransportRegistry>,
 ) -> Result<Response<Body>> {
-    let models = registry.store().models().await?;
+    let models = published_models(registry.store().models().await?);
     let plugin_models = configured_plugin_models(&registry).await;
     Ok(local_response(
         default_model_nudge_response(&models, &plugin_models).encode_to_vec(),
     ))
+}
+
+/// Only enabled models are published to Cursor's model catalog. The group
+/// switch bulk-toggles `enabled`, so this is the single point where a disabled
+/// group disappears from Cursor's model picker.
+fn published_models(models: Vec<ModelConfig>) -> Vec<ModelConfig> {
+    models.into_iter().filter(|model| model.enabled).collect()
 }
 
 async fn configured_plugin_models(registry: &TransportRegistry) -> Vec<PluginModelDescriptor> {
@@ -452,12 +477,21 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
 
 fn available_model(model: &ModelConfig) -> AvailableModel {
     let contexts = context_options(model.context_window_tokens);
-    let tooltip = model_tooltip(model);
+    let default_context_name = configured_context(model.context_window_tokens)
+        .map(|(_, display_name)| display_name)
+        .unwrap_or_else(|| "200K".into());
+    let context_token_limit = model
+        .context_window_tokens
+        .map(|tokens| tokens.min(i32::MAX as u64) as i32);
+    let tooltip = model_tooltip(model, &default_context_name);
     let variants = model_variants(
         &model.model_hash,
         &model.display_name,
         &tooltip,
         &contexts,
+        configured_context(model.context_window_tokens)
+            .map(|(value, _)| value)
+            .unwrap_or_else(|| DEFAULT_CONTEXT.to_owned()),
         true,
     );
     let legacy_slugs = variants
@@ -473,6 +507,8 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         supports_thinking: Some(true),
         supports_images: Some(true),
         supports_max_mode: Some(true),
+        context_token_limit,
+        context_token_limit_for_max_mode: context_token_limit,
         client_display_name: Some(model.display_name.clone()),
         server_model_name: Some(model.model_hash.clone()),
         supports_non_max_mode: Some(true),
@@ -585,6 +621,7 @@ fn model_variants(
     display_name: &str,
     tooltip: &TooltipData,
     contexts: &[(String, String)],
+    default_context: String,
     thinking: bool,
 ) -> Vec<ModelVariant> {
     // Non-thinking models have no Effort axis, so the variant grid reduces to Context × Fast.
@@ -609,6 +646,7 @@ fn model_variants(
                     tooltip,
                     context,
                     context_name,
+                    &default_context,
                     *effort,
                     fast,
                 ));
@@ -618,17 +656,19 @@ fn model_variants(
     variants
 }
 
+#[allow(clippy::too_many_arguments)]
 fn model_variant(
     name: &str,
     display_name: &str,
     tooltip: &TooltipData,
     context: &str,
     context_name: &str,
+    default_context: &str,
     effort: Option<(&str, &str)>,
     fast: bool,
 ) -> ModelVariant {
     let mut suffix = Vec::with_capacity(3);
-    if context != DEFAULT_CONTEXT {
+    if context != default_context {
         suffix.push(context_name);
     }
     if let Some((_, effort_name)) = effort {
@@ -646,7 +686,7 @@ fn model_variant(
         )
     };
     let is_default =
-        context == DEFAULT_CONTEXT && !fast && effort.is_none_or(|(effort, _)| effort == "high");
+        context == default_context && !fast && effort.is_none_or(|(effort, _)| effort == "high");
     let mut parameter_values = vec![ModelParameterValue {
         id: "context".into(),
         value: context.into(),
@@ -685,9 +725,12 @@ fn model_variant(
     }
 }
 
-fn model_tooltip(model: &ModelConfig) -> TooltipData {
+fn model_tooltip(model: &ModelConfig, default_context_name: &str) -> TooltipData {
     TooltipData {
-        markdown_content: Some(model.tooltip_data.clone()),
+        markdown_content: Some(format!(
+            "**Default context:** {}  \n{}",
+            default_context_name, model.tooltip_data
+        )),
     }
 }
 
@@ -697,7 +740,14 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     };
     // Effort and context tiers are provided uniformly by the host, consistent with built-in models; plugins no longer declare them.
     let contexts = context_options(None);
-    let variants = model_variants(&model.id, &model.display_name, &tooltip, &contexts, true);
+    let variants = model_variants(
+        &model.id,
+        &model.display_name,
+        &tooltip,
+        &contexts,
+        DEFAULT_CONTEXT.to_owned(),
+        true,
+    );
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
@@ -711,6 +761,8 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         supports_thinking: Some(true),
         supports_images: Some(model.images),
         supports_max_mode: Some(false),
+        context_token_limit: None,
+        context_token_limit_for_max_mode: None,
         client_display_name: Some(model.display_name.clone()),
         server_model_name: Some(model.id.clone()),
         supports_non_max_mode: Some(true),
@@ -770,6 +822,27 @@ fn usable_model(model: &ModelConfig) -> agent::ModelDetails {
 
 #[cfg(test)]
 mod tests {
+    use super::{context_options, CONTEXTS};
+
+    #[test]
+    fn configured_context_leads_and_dedupes_the_options() {
+        // A configured window that matches a known tier moves that tier first.
+        let options = context_options(Some(200_000));
+        assert_eq!(options[0], ("200k".into(), "200K".into()));
+        assert_eq!(options.iter().filter(|(v, _)| v == "200k").count(), 1);
+
+        // A configured window outside the known tiers is prepended as its own entry.
+        let options = context_options(Some(272_000));
+        assert_eq!(options[0], ("272000".into(), "272K".into()));
+        assert_eq!(options[1], ("200k".into(), "200K".into()));
+        assert_eq!(options.len(), CONTEXTS.len() + 1);
+
+        // No configuration: the standard tiers only.
+        let options = context_options(None);
+        assert_eq!(options.len(), CONTEXTS.len());
+        assert_eq!(options[0], ("200k".into(), "200K".into()));
+    }
+
     use super::*;
     use crate::model::{ModelType, OPENAI_CHAT_ENDPOINT};
 
@@ -779,6 +852,7 @@ mod tests {
             sort_order: 0,
             display_name: "Local Model".into(),
             group_name: None,
+            enabled: true,
             model_type: ModelType::OpenAi,
             base_url: "https://provider.example/v1/chat/completions".into(),
             use_full_url: true,
@@ -859,5 +933,26 @@ mod tests {
             nudge.models_with_no_default_switch,
             vec!["local-model-hash"]
         );
+    }
+
+    /// Disabled models do not enter Cursor's model catalog and cannot become
+    /// the default model.
+    #[test]
+    fn disabled_models_are_not_published_to_cursor() {
+        let published = published_models(vec![
+            ModelConfig {
+                enabled: false,
+                ..model()
+            },
+            model(),
+        ]);
+        assert_eq!(published.len(), 1);
+        assert!(published[0].enabled);
+
+        let none = published_models(vec![ModelConfig {
+            enabled: false,
+            ..model()
+        }]);
+        assert!(default_model_details(&none, &[]).is_none());
     }
 }

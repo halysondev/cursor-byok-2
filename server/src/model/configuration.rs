@@ -128,6 +128,9 @@ pub struct ModelConfig {
     pub sort_order: i64,
     pub display_name: String,
     pub group_name: Option<String>,
+    /// Whether the model is published to Cursor's model catalog: the group
+    /// switch toggles this flag in bulk; it does not affect the identity hash.
+    pub enabled: bool,
     #[serde(rename = "type")]
     pub model_type: ModelType,
     pub base_url: String,
@@ -191,10 +194,12 @@ impl ModelConfig {
 
     pub fn configure(&self, model: &mut super::ModelSpec) {
         model.display_name = Some(self.display_name.clone());
-        // A request-selected context is authoritative.  Use the saved model
-        // value only when Cursor did not send a context parameter.
-        if model.context_window_tokens.is_none() {
-            model.context_window_tokens = self.context_window_tokens;
+        // A configured context window has priority over the Cursor selection:
+        // the custom option is the operator's explicit statement about the
+        // upstream model, so it wins over whatever context tier Cursor picked.
+        model.context_window_tokens = self.context_window_tokens.or(model.context_window_tokens);
+        if model.max_output_tokens.is_none() {
+            model.max_output_tokens = self.max_output_tokens();
         }
         if model.reasoning.effort.is_none() {
             model.reasoning.effort = match self.model_type {
@@ -203,6 +208,52 @@ impl ModelConfig {
             };
         }
         model.reasoning.enabled |= model.reasoning.effort.is_some();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configured_context_window_has_priority_over_cursor_selection() {
+        let provider = ModelConfig {
+            model_hash: "12345678".into(),
+            sort_order: 0,
+            display_name: "Test".into(),
+            group_name: None,
+            enabled: true,
+            model_type: ModelType::OpenAi,
+            base_url: "https://provider.example/v1/chat/completions".into(),
+            use_full_url: true,
+            api_key: "provider-secret".into(),
+            tooltip_data: "Test".into(),
+            model_id: "upstream-model".into(),
+            reasoning_effort: None,
+            openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: Some(200_000),
+            max_completion_tokens: None,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+            created_at_ms: 0,
+            updated_at_ms: 0,
+        };
+
+        let mut selected = super::ModelSpec::new("12345678");
+        selected.context_window_tokens = Some(800_000);
+        provider.configure(&mut selected);
+        assert_eq!(selected.context_window_tokens, Some(200_000));
+
+        let mut defaulted = super::ModelSpec::new("12345678");
+        provider.configure(&mut defaulted);
+        assert_eq!(defaulted.context_window_tokens, Some(200_000));
     }
 }
 

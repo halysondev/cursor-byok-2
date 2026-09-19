@@ -21,7 +21,7 @@ function context(requests: Array<{ url: string; body?: string }>): PluginContext
             }),
           };
         }
-        if (url.startsWith("https://www.googleapis.com/oauth2/v1/userinfo")) {
+        if (url === "https://www.googleapis.com/oauth2/v2/userinfo") {
           return { status: 200, headers: {}, body: JSON.stringify({ email: "user@example.com" }) };
         }
         return { status: 500, headers: {}, body: "{}" };

@@ -7,7 +7,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::{ProviderConfig, ProviderKind},
-    model::{ModelInvocation, ModelLatency, NewLlmCall, ProviderType},
+    model::{
+        estimate_context_tokens, ModelInvocation, ModelLatency, NewLlmCall, ProviderType, Usage,
+    },
     plugin::{PluginRegistry, ADAPTER_ID_PREFIX},
     store::Store,
     Error, Result,
@@ -120,6 +122,7 @@ impl Provider for ProviderRouter {
             );
             let mut last_event_time = std::time::Instant::now();
             let mut event_count: u64 = 0;
+            let mut observed_usage = false;
             loop {
                 let event = match next_provider_event(&mut stream, stream_idle_timeout).await {
                     Ok(Some(event)) => event,
@@ -152,8 +155,24 @@ impl Provider for ProviderRouter {
                                 "slow gap detected between provider events"
                             );
                         }
+                        if matches!(&event, super::ModelEvent::Usage(_)) {
+                            observed_usage = true;
+                        }
+                        let synthetic_usage = if matches!(&event, super::ModelEvent::Done(_))
+                            && !observed_usage
+                        {
+                            let usage = estimated_usage(&invocation.request);
+                            recorder.usage(usage).await?;
+                            observed_usage = true;
+                            Some(usage)
+                        } else {
+                            None
+                        };
                         recorder.event(&event).await?;
                         last_event_time = now;
+                        if let Some(usage) = synthetic_usage {
+                            yield super::ModelEvent::Usage(usage);
+                        }
                         yield event;
                     }
                     Err(error) => {
@@ -165,13 +184,31 @@ impl Provider for ProviderRouter {
                             event_count,
                             "provider stream error"
                         );
+                        if !observed_usage {
+                            recorder
+                                .usage(estimated_usage(&invocation.request))
+                                .await?;
+                        }
                         recorder.failed(&error).await?;
                         Err(error)?;
                     }
                 }
             }
+            if !observed_usage {
+                recorder.usage(estimated_usage(&invocation.request)).await?;
+            }
             finish_stream(&recorder, &cancellation).await?;
         })
+    }
+}
+
+fn estimated_usage(request: &crate::model::ModelRequest) -> Usage {
+    let input_tokens = estimate_context_tokens(&request.prompt, &request.history);
+    Usage {
+        input_tokens: Some(input_tokens),
+        context_input_tokens: Some(input_tokens),
+        total_tokens: Some(input_tokens),
+        ..Default::default()
     }
 }
 

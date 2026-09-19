@@ -41,6 +41,10 @@ pub struct ResourceDefinition {
     #[serde(default)]
     pub actions: Vec<ResourceActionDefinition>,
     pub can_refresh: bool,
+    #[serde(default)]
+    pub refresh_interval_ms: Option<u64>,
+    #[serde(default)]
+    pub can_prepare: bool,
     pub can_remove: bool,
 }
 

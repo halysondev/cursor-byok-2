@@ -11,7 +11,7 @@ use crate::{
 use super::{now_ms, Store};
 
 const MODEL_COLUMNS: &str = r#"
-    model_hash, sort_order, display_name, group_name, model_type, base_url, use_full_url, api_key, tooltip_data,
+    model_hash, sort_order, display_name, group_name, enabled, model_type, base_url, use_full_url, api_key, tooltip_data,
     model_id, reasoning_effort, openai_endpoint, openai_extra_params_enabled,
     openai_extra_params_json, custom_headers_enabled, custom_headers_json,
     anthropic_extra_params_enabled, anthropic_extra_params_json, context_window_tokens,
@@ -187,6 +187,38 @@ impl Store {
         Ok(())
     }
 
+    /// Bulk-toggles whether models are published to Cursor's model catalog.
+    /// The group switch affects every model in a group, so this completes all
+    /// hashes in one transaction, without changing model identity or any other
+    /// configuration.
+    pub async fn set_models_enabled(
+        &self,
+        model_hashes: &[String],
+        enabled: bool,
+    ) -> Result<Vec<ModelConfig>> {
+        if model_hashes.is_empty() {
+            return Err(Error::Config("at least one model is required".into()));
+        }
+        let now = now_ms();
+        let _write = self.writes.lock().await;
+        let mut transaction = self.pool.begin().await?;
+        for hash in model_hashes {
+            let result = sqlx::query(
+                "UPDATE model_configs SET enabled = ?, updated_at_ms = ? WHERE model_hash = ?",
+            )
+            .bind(enabled)
+            .bind(now)
+            .bind(hash)
+            .execute(&mut *transaction)
+            .await?;
+            if result.rows_affected() != 1 {
+                return Err(Error::RunNotFound(format!("model {hash}")));
+            }
+        }
+        transaction.commit().await?;
+        self.models().await
+    }
+
     pub async fn reorder_models(&self, model_hashes: &[String]) -> Result<Vec<ModelConfig>> {
         let current = self.models().await?;
         let current_hashes = current
@@ -243,13 +275,13 @@ async fn insert_model_with_conflict(
 ) -> Result<bool> {
     let mut statement = String::from(
         r#"INSERT INTO model_configs(
-            model_hash, sort_order, display_name, group_name, model_type, base_url, use_full_url, api_key, tooltip_data,
+            model_hash, sort_order, display_name, group_name, enabled, model_type, base_url, use_full_url, api_key, tooltip_data,
             model_id, reasoning_effort, openai_endpoint, openai_extra_params_enabled,
             openai_extra_params_json, custom_headers_enabled, custom_headers_json,
             anthropic_extra_params_enabled, anthropic_extra_params_json, context_window_tokens,
             max_completion_tokens, anthropic_max_tokens, anthropic_thinking_effort,
             thinking_budget_tokens, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     );
     if ignore_existing {
         statement.push_str(" ON CONFLICT(model_hash) DO NOTHING");
@@ -291,6 +323,7 @@ fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
         sort_order: row.try_get("sort_order")?,
         display_name: row.try_get("display_name")?,
         group_name: row.try_get("group_name")?,
+        enabled: row.try_get("enabled")?,
         model_type: ModelType::from_str(row.try_get("model_type")?)?,
         base_url: row.try_get("base_url")?,
         use_full_url: row.try_get("use_full_url")?,
@@ -397,5 +430,42 @@ mod tests {
             .unwrap();
         assert_eq!(cleared.model_hash, created.model_hash);
         assert_eq!(cleared.group_name, None);
+    }
+
+    /// The group switch bulk-toggles publication by model hash: new models are
+    /// published by default, disabling only flips the flag without changing the
+    /// identity hash, and unknown hashes error out.
+    #[tokio::test]
+    async fn set_models_enabled_toggles_publication_without_changing_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+
+        let created = store.create_model(&model_input(None)).await.unwrap();
+        assert!(created.enabled, "new models are published by default");
+
+        let hidden = store
+            .set_models_enabled(std::slice::from_ref(&created.model_hash), false)
+            .await
+            .unwrap();
+        assert_eq!(hidden.len(), 1);
+        assert!(!hidden[0].enabled);
+        assert_eq!(hidden[0].model_hash, created.model_hash);
+
+        let published = store
+            .set_models_enabled(std::slice::from_ref(&created.model_hash), true)
+            .await
+            .unwrap();
+        assert!(published[0].enabled);
+
+        assert!(store
+            .set_models_enabled(&["missing-model".into()], false)
+            .await
+            .is_err());
+        assert!(store.set_models_enabled(&[], false).await.is_err());
     }
 }

@@ -7,6 +7,7 @@ export interface Model {
   sort_order: number;
   display_name: string;
   group_name: string | null;
+  enabled: boolean;
   type: ModelType;
   base_url: string;
   use_full_url: boolean;
@@ -164,6 +165,14 @@ export interface TokenPricingSettings {
   output_per_million: number;
   cache_read_per_million: number;
   cache_write_per_million: number;
+}
+
+export interface SubagentRoutingSettings {
+  enabled: boolean;
+  target_model_id: string;
+  model_aliases: Record<string, string>;
+  apply_to_subagents: boolean;
+  apply_to_normal_chats: boolean;
 }
 
 export type PluginRuntimeState = "uninitialized" | "initializing" | "ready" | "failed" | "unsupported";
@@ -467,6 +476,7 @@ export const api = {
   models: () => request<Model[]>("/models"),
   createModels: (models: ModelInput[]) => request<Model[]>("/models", { method: "POST", body: JSON.stringify({ models }) }),
   reorderModels: (modelHashes: string[]) => request<Model[]>("/models/order", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }),
+  setModelsEnabled: (modelHashes: string[], enabled: boolean) => request<Model[]>("/models/enabled", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes, enabled }) }),
   discoverModels: (input: ModelDiscoveryInput) => request<{ models: string[] }>("/models/discover", { method: "POST", body: JSON.stringify(input) }),
   previewV0049Models: () => request<LegacyModelImportPreview>("/models/import-v0049"),
   importV0049Models: () => request<LegacyModelImportResult>("/models/import-v0049", { method: "POST" }),
@@ -536,4 +546,7 @@ export const api = {
   setCommitSettings: (settings: CommitSettings) => request<CommitSettingsView>("/settings/commit", { method: "PUT", body: JSON.stringify(settings) }),
   pricingSettings: () => request<TokenPricingSettings>("/settings/pricing"),
   setPricingSettings: (settings: TokenPricingSettings) => request<TokenPricingSettings>("/settings/pricing", { method: "PUT", body: JSON.stringify(settings) }),
+  subagentRoutingSettings: () => request<SubagentRoutingSettings>("/settings/subagent-routing"),
+  setSubagentRoutingSettings: (settings: SubagentRoutingSettings) =>
+    request<SubagentRoutingSettings>("/settings/subagent-routing", { method: "PUT", body: JSON.stringify(settings) }),
 };

@@ -1081,6 +1081,14 @@ async fn injected_user_context_detaches_subagents_without_cancelling_them() {
 #[tokio::test]
 async fn injected_user_context_interrupts_automatic_compaction() {
     let (_directory, store) = fixtures::temp_store().await;
+    // Minimum reserve so the small seed turn fits the window while the 400K
+    // answer overflows it on the follow-up request.
+    store
+        .set_compaction_settings(cursor_server::store::CompactionSettings {
+            reserve_tokens: cursor_server::store::MIN_COMPACTION_RESERVE_TOKENS,
+        })
+        .await
+        .unwrap();
     let model = store
         .create_model(&ModelConfigInput {
             sort_order: 0,
@@ -1181,6 +1189,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
             tokio::time::Instant::now() < deadline,
             "automatic compaction did not start"
         );
+
         if let Ok(Some(frame)) =
             tokio::time::timeout(std::time::Duration::from_millis(20), output.recv()).await
         {

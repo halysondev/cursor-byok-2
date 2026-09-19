@@ -161,8 +161,13 @@ export async function refreshTokens(
   const body = parseBody(response.body);
   const tokens = parseTokenResponse(body, CC_OAUTH_CONFIG.scopes.split(" "));
   if (!tokens) {
+    // Include the machine-readable error code (e.g. invalid_grant) so callers
+    // can classify terminal failures, plus the human description.
+    const code = typeof body.error === "string" ? body.error : "";
     const message = errorMessage(body) ?? response.body.slice(0, 200);
-    throw new Error(`Claude token refresh failed (HTTP ${response.status}): ${message}`);
+    throw new Error(
+      `Claude token refresh failed (HTTP ${response.status}${code ? `, ${code}` : ""}): ${message}`,
+    );
   }
   return tokens;
 }

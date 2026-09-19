@@ -846,11 +846,19 @@ async fn one_run_can_auto_compact_again_after_more_tool_output() {
             custom_headers: json!({}),
             anthropic_extra_params_enabled: false,
             anthropic_extra_params: json!({}),
-            context_window_tokens: Some(25_000),
+            context_window_tokens: Some(62_000),
             max_completion_tokens: None,
             anthropic_max_tokens: None,
             anthropic_thinking_effort: None,
             thinking_budget_tokens: None,
+        })
+        .await
+        .unwrap();
+    // The truncated tool result (~64KiB) must still overflow the post-reserve
+    // budget so compaction triggers — twice, once per oversized read.
+    store
+        .set_compaction_settings(cursor_server::store::CompactionSettings {
+            reserve_tokens: cursor_server::store::MIN_COMPACTION_RESERVE_TOKENS,
         })
         .await
         .unwrap();

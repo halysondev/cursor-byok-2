@@ -587,7 +587,14 @@ impl ConversationOutput {
                             {
                                 Ok(checkpoint) => {
                                     context_tokens = checkpoint_context_tokens(&checkpoint);
-                                    compaction_checkpoint = Some(checkpoint);
+                                    if self.context.compacting {
+                                        compaction_checkpoint = Some(checkpoint);
+                                    } else if let Err(error) =
+                                        self.checkpoint.publish(&self.handle, &checkpoint).await
+                                    {
+                                        state.barrier.complete(Err(error.to_string()));
+                                        return Err(error);
+                                    }
                                     state.barrier.complete(Ok(()));
                                 }
                                 Err(error) => {

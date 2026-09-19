@@ -25,6 +25,7 @@ pub struct App {
     router: axum::Router,
     registry: TransportRegistry,
     harness: CursorHarness,
+    plugins: PluginRegistry,
     store: Store,
 }
 
@@ -37,7 +38,11 @@ impl App {
                 .set_port(store.port_settings().await?.service_port);
         }
         let assets = PromptAssets::embedded()?;
-        let compiler = PromptCompiler::new(assets);
+        let compiler = PromptCompiler::with_compaction_prompt_path(
+            assets,
+            crate::config::compaction_prompt_path()?,
+        )
+        .with_global_rules_dir(crate::config::global_rules_dir()?);
         let plugin_runtime = PluginRuntime::managed()?;
         let plugins = PluginRegistry::managed(
             store.clone(),
@@ -64,7 +69,7 @@ impl App {
             store.clone(),
             provider,
             plugin_runtime,
-            plugins,
+            plugins.clone(),
             clients.clone(),
         )?;
         let harness = control.cursor_harness().clone();
@@ -82,6 +87,7 @@ impl App {
             router,
             registry,
             harness,
+            plugins,
             store,
             config,
         })
@@ -142,6 +148,14 @@ impl App {
             .into_future();
         tokio::pin!(server);
 
+        let plugins_for_refresh = self.plugins.clone();
+        let refresh_shutdown = shutdown.clone();
+        tokio::spawn(async move {
+            plugins_for_refresh
+                .run_background_resource_refresh(refresh_shutdown)
+                .await;
+        });
+
         tokio::select! {
             result = &mut server => {
                 if let Err(error) = harness.disable().await {
@@ -153,6 +167,7 @@ impl App {
                 if let Err(error) = harness.disable().await {
                     tracing::warn!(%error, "failed to disable Cursor harness during shutdown");
                 }
+                self.plugins.shutdown().await;
                 registry.shutdown().await;
                 match tokio::time::timeout(Duration::from_secs(10), &mut server).await {
                     Ok(result) => result?,

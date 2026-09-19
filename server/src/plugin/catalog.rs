@@ -34,6 +34,15 @@ pub(crate) struct PluginEntry {
 }
 
 impl PluginCatalog {
+    #[cfg(test)]
+    pub(super) fn for_test(root: PathBuf) -> Self {
+        Self {
+            definition_loader: PluginDefinitionLoader::for_test(&root.join("sdk")).unwrap(),
+            roots: vec![root.join("installed")],
+            app_version: "0.1.7".into(),
+        }
+    }
+
     pub fn managed(app_version: String) -> Result<Self> {
         let installed = config::managed_data_dir()?.join("plugins/installed");
         fs::create_dir_all(&installed)?;
@@ -86,7 +95,11 @@ impl PluginCatalog {
                 {
                     Ok(entry) => {
                         if plugins.contains_key(&entry.manifest.id) {
-                            tracing::warn!(plugin = %entry.manifest.id, path = %directory.display(), "ignoring duplicate plugin");
+                            tracing::debug!(
+                                plugin = %entry.manifest.id,
+                                path = %directory.display(),
+                                "duplicate plugin ignored; earlier plugin source has priority"
+                            );
                         } else {
                             plugins.insert(entry.manifest.id.clone(), entry);
                         }
@@ -119,7 +132,7 @@ impl PluginCatalog {
                 if let Ok((manifest, icon)) = loaded {
                     plugins
                         .entry(manifest.id.clone())
-                        .or_insert((manifest, icon));
+                        .or_insert_with(|| (manifest, icon));
                 }
             }
         }

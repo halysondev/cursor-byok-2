@@ -26,6 +26,13 @@ pub struct ModelOrder {
     pub model_hashes: Vec<String>,
 }
 
+/// The group/publication switch: disabled models leave Cursor's model picker.
+#[derive(Deserialize)]
+pub struct SetModelsEnabled {
+    pub model_hashes: Vec<String>,
+    pub enabled: bool,
+}
+
 pub async fn list(State(service): State<ControlService>) -> Result<Json<Vec<ModelConfig>>> {
     Ok(Json(service.models().await?))
 }
@@ -45,6 +52,17 @@ pub async fn reorder(
     Json(input): Json<ModelOrder>,
 ) -> Result<Json<Vec<ModelConfig>>> {
     Ok(Json(service.reorder_models(&input.model_hashes).await?))
+}
+
+pub async fn set_enabled(
+    State(service): State<ControlService>,
+    Json(input): Json<SetModelsEnabled>,
+) -> Result<Json<Vec<ModelConfig>>> {
+    Ok(Json(
+        service
+            .set_models_enabled(&input.model_hashes, input.enabled)
+            .await?,
+    ))
 }
 
 pub async fn remove(

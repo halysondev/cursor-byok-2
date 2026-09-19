@@ -22,6 +22,12 @@ import { Switch } from "../../shared/ui/Switch";
 import styles from "./PluginResourcePanels.module.scss";
 
 const PAGE_SIZE = 10;
+const ANTIGRAVITY_PLUGIN_ID = "dev.cursorbyok.plugins.antigravity-auth";
+const ANTIGRAVITY_RESOURCE_TYPE = "antigravity-account";
+
+function isAntigravityAccountResource(pluginId: string, resourceType: string) {
+  return pluginId === ANTIGRAVITY_PLUGIN_ID && resourceType === ANTIGRAVITY_RESOURCE_TYPE;
+}
 
 export function PluginAddPanel({ plugin, onConfigured }: { plugin: PluginDescriptor; onConfigured: () => void }) {
   return <div className={styles.panel}>
@@ -143,7 +149,10 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
   </Card>;
 }
 
-export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
+export function PluginSettingsPanel({ plugin, onResourcesEmpty }: {
+  plugin: PluginDescriptor;
+  onResourcesEmpty: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
@@ -154,6 +163,8 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
   const [resourceActionResult, setResourceActionResult] = useState<PluginResourceActionResult | null>(null);
   const [resourceActionError, setResourceActionError] = useState<string | null>(null);
   const modelProvider = modelProviderId ? plugin.providers.find((provider) => provider.id === modelProviderId) ?? null : null;
+  const quotaNow = useQuotaClock(plugin.resources);
+  usePluginSnapshotPoll();
 
   const run = async (key: string, task: () => Promise<void>) => {
     setBusy(key);
@@ -200,6 +211,16 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
     void executeResourceAction({ resource, item }, action);
   };
 
+  const applyModels = async (provider: PluginProviderDescriptor, enabledByModel: Record<string, boolean>) => {
+    await run("models", async () => {
+      for (const model of provider.models) {
+        const enabled = enabledByModel[model.id] ?? model.enabled;
+        if (model.enabled !== enabled) await api.setPluginModelEnabled(plugin.id, provider.id, model.modelId, enabled);
+      }
+    });
+    setModelProviderId(null);
+  };
+
   return <div className={styles.panel}>
     {plugin.providers.map((provider) => <ProviderRow
       key={provider.id}
@@ -213,14 +234,20 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
     />)}
     {plugin.resources.map((resource) => <ResourceList
       key={resource.type}
+      pluginId={plugin.id}
       resource={resource}
       busy={busy !== null}
+      now={quotaNow}
       onAction={(item, action) => openResourceAction(resource, item, action)}
       onRefresh={(item) => void run(`refresh:${item.id}`, async () => {
         await api.refreshPluginResource(plugin.id, resource.type, item.id);
       })}
       onDelete={(item) => void run(`delete:${item.id}`, async () => {
         await api.deletePluginResource(plugin.id, resource.type, item.id);
+        await appStore.refreshPlugins();
+        const refreshed = appStore.getSnapshot().plugins.find((candidate) => candidate.id === plugin.id);
+        const remaining = refreshed?.resources.find((candidate) => candidate.type === resource.type)?.resources.length ?? 0;
+        if (isAntigravityAccountResource(plugin.id, resource.type) && remaining === 0) onResourcesEmpty();
       })}
     />)}
     {error && <span className={styles.error} role="alert">{error}</span>}
@@ -228,12 +255,7 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
       provider={modelProvider}
       busy={busy !== null}
       onClose={() => setModelProviderId(null)}
-      onSubmit={(enabledByModel) => void run("models", async () => {
-        for (const model of modelProvider.models) {
-          const enabled = enabledByModel[model.id] ?? model.enabled;
-          if (model.enabled !== enabled) await api.setPluginModelEnabled(plugin.id, modelProvider.id, model.modelId, enabled);
-        }
-      })}
+      onSubmit={(enabledByModel) => void applyModels(modelProvider, enabledByModel)}
     />}
     {resourceAction && <ResourceActionModal
       action={resourceAction.resource.actions.find((item) => item.target === "resource") ?? null}
@@ -280,11 +302,9 @@ function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
   onClose: () => void;
   onSubmit: (enabledByModel: Record<string, boolean>) => void;
 }) {
-  const [enabledByModel, setEnabledByModel] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    setEnabledByModel(Object.fromEntries(provider.models.map((model) => [model.id, model.enabled])));
-  }, [provider.models]);
+  const [enabledByModel, setEnabledByModel] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(provider.models.map((model) => [model.id, model.enabled])),
+  );
 
   const setAll = (enabled: boolean) => {
     setEnabledByModel(Object.fromEntries(provider.models.map((model) => [model.id, enabled])));
@@ -310,7 +330,6 @@ function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
           {provider.models.map((model) => <tr key={model.id}>
             <td><div className={styles.modelName}>
               <strong>{model.displayName}</strong>
-              {model.description && <span>{model.description}</span>}
             </div></td>
             <td><Switch
               checked={enabledByModel[model.id] ?? model.enabled}
@@ -326,9 +345,11 @@ function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
   </Modal>;
 }
 
-function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
+function ResourceList({ pluginId, resource, busy, now, onAction, onRefresh, onDelete }: {
+  pluginId: string;
   resource: PluginResourceDescriptor;
   busy: boolean;
+  now: number;
   onAction: (item: PluginResourceView, action: PluginResourceAction) => void;
   onRefresh: (item: PluginResourceView) => void;
   onDelete: (item: PluginResourceView) => void;
@@ -344,18 +365,19 @@ function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
 
   useEffect(() => setPage(1), [query]);
 
-  return <FormField label={pluginText(resource.displayName)}>
-    <div className={styles.resourceSection}>
+  const content = <div className={styles.resourceSection}>
       {resource.resources.length > PAGE_SIZE && <div className={styles.toolbar}>
         <TextInput aria-label={"Search resources"} placeholder={"Search resources"} value={query} onChange={(event) => setQuery(event.target.value)} />
       </div>}
       <div className={styles.resourceList}>
         {visible.map((item) => <ResourceRow
           key={item.id}
+          isAntigravityAccount={isAntigravityAccountResource(pluginId, resource.type)}
           item={item}
           actions={resource.actions.filter((action) => action.target === "resource")}
           canRefresh={resource.canRefresh}
           disabled={busy}
+          now={now}
           onAction={(action) => onAction(item, action)}
           onRefresh={() => onRefresh(item)}
           onDelete={() => onDelete(item)}
@@ -367,35 +389,48 @@ function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
         <span>{`Page ${Math.min(page, pageCount)} / ${pageCount}`}</span>
         <Button size="small" disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>{"Next page"}</Button>
       </div>}
-    </div>
-  </FormField>;
+    </div>;
+
+  return isAntigravityAccountResource(pluginId, resource.type)
+    ? content
+    : <FormField label={pluginText(resource.displayName)}>{content}</FormField>;
 }
 
-function ResourceRow({ item, actions, canRefresh, disabled, onAction, onRefresh, onDelete }: {
+function ResourceRow({ isAntigravityAccount, item, actions, canRefresh, disabled, now, onAction, onRefresh, onDelete }: {
+  isAntigravityAccount: boolean;
   item: PluginResourceView;
   actions: PluginResourceAction[];
   canRefresh: boolean;
   disabled: boolean;
+  now: number;
   onAction: (action: PluginResourceAction) => void;
   onRefresh: () => void;
   onDelete: () => void;
 }) {
+  const resourceActions = actions.length > 0 || canRefresh;
   return <Card className={styles.resourceRow}>
-    <div>
-      <strong>{item.displayName}</strong>
-      {item.description && <span>{pluginText(item.description)}</span>}
-      {item.metrics.map((metric) => <span key={metric.id}>
-        {metric.unit === "percent"
-          ? `${pluginText(metric.label)}: ${Math.round(metric.value)}% left`
-          : `${pluginText(metric.label)}: ${metric.value}`}
-      </span>)}
+    <div className={styles.resourceHeader}>
+      <div className={styles.resourceIdentity}>
+        <div className={styles.resourceNameAndState}>
+          <strong title={item.displayName}>{item.displayName}</strong>
+          {isAntigravityAccount && <StateBadge state={item.state} />}
+        </div>
+        {item.description && <span title={pluginText(item.description)}>{pluginText(item.description)}</span>}
+      </div>
+      <div className={styles.resourceOperations}>
+        {!isAntigravityAccount && <StateBadge state={item.state} />}
+        {resourceActions && <div className={styles.resourceActionButtons} aria-label={"Resource operations"}>
+          {actions.map((action) => <Button key={action.id} size="small" disabled={disabled} onClick={() => onAction(action)}>{pluginText(action.displayName)}</Button>)}
+          {canRefresh && <Button size="small" disabled={disabled} onClick={onRefresh}>{"Refresh"}</Button>}
+        </div>}
+        <Button size="small" disabled={disabled} onClick={onDelete}>{isAntigravityAccount ? "Delete account" : "Delete"}</Button>
+      </div>
     </div>
-    <div className={styles.actions}>
-      <StateBadge state={item.state} />
-      {actions.map((action) => <Button key={action.id} size="small" disabled={disabled} onClick={() => onAction(action)}>{pluginText(action.displayName)}</Button>)}
-      {canRefresh && <Button size="small" disabled={disabled} onClick={onRefresh}>{"Refresh"}</Button>}
-      <Button size="small" disabled={disabled} onClick={onDelete}>{"Delete"}</Button>
-    </div>
+    <QuotaMetrics
+      metrics={item.metrics}
+      now={now}
+      isAntigravityAccount={isAntigravityAccount}
+    />
   </Card>;
 }
 
@@ -456,6 +491,145 @@ function ResourceActionModal({ action, cardAction, result, busy, error, onClose,
       <strong>{pluginText(pendingCard.title)}</strong>
     </ConfirmDialog>}
   </>;
+}
+
+function usePluginSnapshotPoll() {
+  useEffect(() => {
+    let stopped = false;
+    let timer = 0;
+    const poll = async () => {
+      if (document.visibilityState === "visible") await appStore.refreshPlugins();
+      if (!stopped) timer = window.setTimeout(() => void poll(), 30_000);
+    };
+    timer = window.setTimeout(() => void poll(), 30_000);
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, []);
+}
+
+function useQuotaClock(resources: PluginResourceDescriptor[]) {
+  const hasResetTime = resources.some((resource) => resource.resources.some((item) => item.metrics.some((metric) => metric.resetAtMs !== null && metric.resetAtMs !== undefined)));
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!hasResetTime) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [hasResetTime]);
+
+  return now;
+}
+
+function formatCountdown(resetAtMs: number, now: number) {
+  const remainingMinutes = Math.ceil((resetAtMs - now) / 60_000);
+  if (remainingMinutes <= 0) return "Resets soon";
+  const hours = Math.floor(remainingMinutes / 60);
+  const minutes = remainingMinutes % 60;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
+function formatWeeklyResetDate(value: number) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function QuotaMetrics({ metrics, now, isAntigravityAccount }: {
+  metrics: PluginResourceView["metrics"];
+  now: number;
+  isAntigravityAccount: boolean;
+}) {
+  const [period, setPeriod] = useState<"5h" | "weekly">("5h");
+
+  if (isAntigravityAccount) {
+    const suffix = period === "5h" ? "5h" : "weekly";
+    const pools = [
+      { id: "gemini", label: "Gemini" },
+      { id: "claude-gpt", label: "Claude/GPT" },
+    ];
+
+    return <section className={styles.quotaGroups} aria-label={"Model quotas"}>
+      <div className={styles.quotaGroupHeader}>
+        <span className={styles.quotaGroupTitle}>{"Usage limits"}</span>
+        <div className={styles.quotaPeriodToggle}>
+          <Button size="small" variant={period === "5h" ? "primary" : "secondary"} onClick={() => setPeriod("5h")}>{"5h"}</Button>
+          <Button size="small" variant={period === "weekly" ? "primary" : "secondary"} onClick={() => setPeriod("weekly")}>{"Weekly"}</Button>
+        </div>
+      </div>
+      <div className={styles.quotaGrid}>{pools.map((pool) => {
+        const metric = metrics.find((entry) => entry.id === `pool:${pool.id}:${suffix}`);
+        return metric
+          ? <QuotaMetric key={pool.id} metric={metric} now={now} poolLabel={pool.label} period={period} />
+          : <div key={pool.id} className={styles.quotaMetric}>
+            <span>{pool.label}</span><span className={styles.quotaEmpty}>{"No quota data yet"}</span>
+          </div>;
+      })}</div>
+    </section>;
+  }
+
+  const modelMetrics = metrics.filter((metric) => metric.id.startsWith("model:") || metric.id === "five-hour");
+  const weeklyMetrics = metrics.filter((metric) => metric.id.startsWith("group:") || metric.id === "weekly");
+  const otherMetrics = metrics.filter((metric) => !modelMetrics.includes(metric) && !weeklyMetrics.includes(metric));
+
+  return <div className={styles.quotaGroups}>
+    {modelMetrics.length > 0 && <QuotaGroup title={"Model quotas"} metrics={modelMetrics} now={now} />}
+    {weeklyMetrics.length > 0 && <QuotaGroup title={"Weekly quotas"} metrics={weeklyMetrics} now={now} />}
+    {otherMetrics.length > 0 && <QuotaGroup metrics={otherMetrics} now={now} />}
+  </div>;
+}
+
+function QuotaGroup({ title, metrics, now }: {
+  title?: string;
+  metrics: PluginResourceView["metrics"];
+  now: number;
+}) {
+  return <section className={styles.quotaGroup} aria-label={title}>
+    {title && <span className={styles.quotaGroupTitle}>{title}</span>}
+    <div className={styles.quotaGrid}>
+      {metrics.map((metric) => <QuotaMetric key={metric.id} metric={metric} now={now} />)}
+    </div>
+  </section>;
+}
+
+function QuotaMetric({ metric, now, poolLabel, period }: {
+  metric: PluginResourceView["metrics"][number];
+  now: number;
+  poolLabel?: string;
+  period?: "5h" | "weekly";
+}) {
+  const label = poolLabel ?? pluginText(metric.label);
+  const remainingPercent = Math.max(0, Math.min(100, Math.round(metric.value)));
+  const usedPercent = 100 - remainingPercent;
+  const resetAt = metric.resetAtMs ? formatWeeklyResetDate(metric.resetAtMs) : null;
+  const fullLabel = `${label} · ${metric.id.replace(/^model:/, "")}`;
+  const title = resetAt
+    ? `${fullLabel}: ${usedPercent}% used, resets ${period === "weekly" ? formatWeeklyResetDate(metric.resetAtMs!) : formatCountdown(metric.resetAtMs!, now)}`
+    : fullLabel;
+
+  if (metric.unit !== "percent") return <div className={styles.quotaMetric} title={title}>
+    <span className={styles.quotaName}>{label}</span>
+    <strong className={styles.quotaValue}>{metric.value}</strong>
+  </div>;
+
+  return <div className={styles.quotaMetric} title={title}>
+    <div className={styles.quotaMetricHeader}>
+      <span className={styles.quotaName}>{label}</span>
+      <span className={styles.quotaMeta}>
+        <span>{`${usedPercent}% used`}</span>
+      </span>
+    </div>
+    <div className={styles.quotaTrack} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={usedPercent}>
+      <span className={styles.quotaFill} style={{ width: `${usedPercent}%` }} />
+    </div>
+    {metric.resetAtMs && <span className={styles.quotaReset}>{period === "weekly"
+      ? `Resets ${formatWeeklyResetDate(metric.resetAtMs)}`
+      : `Resets in ${formatCountdown(metric.resetAtMs, now)}`}</span>}
+  </div>;
 }
 
 function formatActionStatus(status: PluginResourceActionCard["status"]) {

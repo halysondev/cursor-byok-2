@@ -20,7 +20,21 @@ use cursor_server::{
 };
 use prost::Message;
 
+/// The default reserve (100K) dwarfs these tests' small windows; the minimum
+/// reserve keeps the original trigger semantics observable.
+async fn use_minimum_compaction_reserve(store: &cursor_server::store::Store) {
+    store
+        .set_compaction_settings(cursor_server::store::CompactionSettings {
+            reserve_tokens: cursor_server::store::MIN_COMPACTION_RESERVE_TOKENS,
+        })
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
+
+/// The default reserve (100K) dwarfs these tests' small windows; the minimum
+/// reserve keeps the original trigger semantics observable.
 async fn summarize_replaces_model_history_and_preserves_cursor_history() {
     let (_directory, store) = fixtures::temp_store().await;
     let model = store
@@ -199,6 +213,7 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
 #[tokio::test]
 async fn automatic_compaction_preflights_provider_input_and_records_rebuilt_tokens() {
     let (_directory, store) = fixtures::temp_store().await;
+    use_minimum_compaction_reserve(&store).await;
     let model = store
         .create_model(&ModelConfigInput {
             sort_order: 0,
@@ -314,6 +329,7 @@ async fn automatic_compaction_preflights_provider_input_and_records_rebuilt_toke
 #[tokio::test]
 async fn incremental_preflight_uses_conversation_anchor_across_model_switch() {
     let (_directory, store) = fixtures::temp_store().await;
+    use_minimum_compaction_reserve(&store).await;
     let model_a = store
         .create_model(&ModelConfigInput {
             sort_order: 0,
@@ -416,6 +432,7 @@ async fn incremental_preflight_uses_conversation_anchor_across_model_switch() {
 #[tokio::test]
 async fn irreducibly_oversized_current_input_fails_before_provider_dispatch() {
     let (_directory, store) = fixtures::temp_store().await;
+    use_minimum_compaction_reserve(&store).await;
     let model = store
         .create_model(&ModelConfigInput {
             sort_order: 0,
@@ -585,10 +602,11 @@ async fn provider_overflow_refusal_compacts_and_retries_once() {
 }
 
 #[tokio::test]
-async fn assistant_terminated_history_is_sent_with_a_user_tail() {
+async fn explicit_resume_persists_a_user_tail_for_assistant_terminated_history() {
     // Cursor can resume a conversation whose committed history already ends
-    // with the assistant. Anthropic refuses that as a prefill, so the run
-    // appends a provider-visible continuation without persisting it.
+    // with the assistant. Anthropic refuses that as a prefill, so an explicit
+    // ResumeAction persists a continuation prompt — the resumed history then
+    // ends with a user message and no transient tail is needed.
     let (_directory, store) = fixtures::temp_store().await;
     let model = store
         .create_model(&windowed_model("tail-model", None))
@@ -638,15 +656,11 @@ async fn assistant_terminated_history_is_sent_with_a_user_tail() {
     assert_eq!(requests.len(), 2);
     let tail = requests[1].history.last().unwrap();
     assert_eq!(tail.role, Role::User);
-    assert_eq!(tail.message_id, "runtime:continue");
+    assert_eq!(tail.message_id, "resume-prompt:tail-resume");
     assert_eq!(
-        requests[1].history[..requests[1].history.len() - 1]
-            .iter()
-            .map(|message| message.message_id.as_str())
-            .collect::<Vec<_>>()
-            .len(),
-        requests[0].history.len() + 1,
-        "committed history plus the first answer, then the transient tail"
+        requests[1].history.len(),
+        requests[0].history.len() + 2,
+        "committed history plus the first answer, then the persisted resume prompt"
     );
     let stored = store
         .load_current_messages(&ConversationId::new("tail-conversation"))
@@ -655,8 +669,14 @@ async fn assistant_terminated_history_is_sent_with_a_user_tail() {
     assert!(
         stored
             .iter()
+            .any(|message| message.message_id == "resume-prompt:tail-resume"),
+        "the resume prompt is persisted with the conversation"
+    );
+    assert!(
+        stored
+            .iter()
             .all(|message| message.message_id != "runtime:continue"),
-        "the continuation tail is provider-visible only and never persisted"
+        "no transient continuation tail is needed once the resume prompt persists"
     );
 }
 

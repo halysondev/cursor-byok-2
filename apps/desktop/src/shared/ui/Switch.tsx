@@ -5,9 +5,11 @@ type SwitchProps = {
   checked: boolean;
   label: string;
   onChange: (checked: boolean) => void;
+  /** small for compact inline positions (e.g. group titles); the default size is for forms. */
+  size?: "small";
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label" | "children" | "onChange" | "role">;
 
-export function Switch({ checked, disabled, label, onChange, onClick, ...props }: SwitchProps) {
+export function Switch({ checked, disabled, label, onChange, onClick, size, ...props }: SwitchProps) {
   return <button
     {...props}
     type="button"
@@ -15,7 +17,7 @@ export function Switch({ checked, disabled, label, onChange, onClick, ...props }
     aria-checked={checked}
     aria-label={label}
     disabled={disabled}
-    className={[styles.root, props.className].filter(Boolean).join(" ")}
+    className={[styles.root, size === "small" && styles.small, props.className].filter(Boolean).join(" ")}
     data-checked={checked || undefined}
     onClick={(event) => {
       onClick?.(event);

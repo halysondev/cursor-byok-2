@@ -4,6 +4,7 @@ import { claudeOAuth } from "./oauth.ts";
 import {
   checkSignInDrift,
   credentialImport,
+  prepareAccount,
   presentAccount,
   refreshAccount,
   RESOURCE_TYPE,
@@ -17,6 +18,7 @@ export default defineProviderPlugin({
     add: [claudeOAuth],
     import: credentialImport,
     present: presentAccount,
+    prepare: prepareAccount,
     refresh: refreshAccount,
     actions: [checkSignInDrift],
   }],

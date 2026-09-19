@@ -35,6 +35,7 @@ import { describeGrantAge, grantAge } from "./refresh-grant.ts";
 import {
   credentialDraft,
   credentialImport,
+  prepareAccount,
   presentAccount,
   RESOURCE_TYPE,
   snapshotState,
@@ -395,6 +396,71 @@ Deno.test("credential import parses CC credentials.json", async () => {
   const data = result.resources[0].privateData as { accessToken: string; deviceId: string };
   assertEquals(data.accessToken, "at-import");
   assert(data.deviceId.length > 0);
+});
+
+Deno.test("prepare refreshes an expiring token and persists the rotation", async () => {
+  let calls = 0;
+  const expiring = resource();
+  const patched = {
+    ...ACCOUNT,
+    expiresAtMs: Date.now() + 60 * 1000,
+  } as unknown as JsonValue;
+  const snapshot = { ...expiring, privateData: patched };
+  const result = await prepareAccount(
+    snapshot,
+    null,
+    context({
+      fetch: (url) => {
+        calls++;
+        assert(url.includes("/v1/oauth/token"));
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            access_token: "at-new",
+            refresh_token: "rt-new",
+            expires_in: 3600,
+            scope: "user:inference",
+          }),
+        };
+      },
+    }),
+  );
+  assertEquals(calls, 1);
+  assert(result !== null);
+  const data = result.privateData as Record<string, unknown>;
+  assertEquals(data.accessToken, "at-new");
+  assertEquals(data.refreshToken, "rt-new");
+  assertEquals(result.state, { status: "ready" });
+});
+
+Deno.test("prepare leaves a comfortably valid token alone", async () => {
+  const result = await prepareAccount(resource(), null, context({}));
+  assertEquals(result, null);
+});
+
+Deno.test("prepare marks a revoked refresh token invalid", async () => {
+  const expiring = {
+    ...ACCOUNT,
+    expiresAtMs: Date.now() + 60 * 1000,
+  } as unknown as JsonValue;
+  const snapshot = { ...resource(), privateData: expiring };
+  const result = await prepareAccount(
+    snapshot,
+    null,
+    context({
+      fetch: () => ({
+        status: 400,
+        headers: {},
+        body: JSON.stringify({
+          error: "invalid_grant",
+          error_description: "Refresh token not found or invalid",
+        }),
+      }),
+    }),
+  );
+  assert(result !== null);
+  assertEquals(result.state?.status, "invalid");
 });
 
 Deno.test("credential draft assigns a stable device identity", async () => {

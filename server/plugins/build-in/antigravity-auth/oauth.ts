@@ -5,13 +5,15 @@ import type {
   ResourceDraft,
 } from "cursor-byok:resource";
 import { credentialDraft, queryAccountQuota } from "./resources.ts";
+import { ANTIGRAVITY_OAUTH_USER_AGENT } from "./models.ts";
 import {
   CLIENT_ID,
   CLIENT_SECRET,
-  GOOGLE_AUTHORIZATION_URL,
   GOOGLE_TOKEN_URL,
   SCOPES,
 } from "./google_oauth.ts";
+
+const GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
 const AUTHORIZATION_LIFETIME_MS = 5 * 60 * 1000;
 
@@ -45,7 +47,7 @@ function parseSession(value: JsonValue): Session {
   return { createdAtMs };
 }
 
-async function begin(
+function begin(
   input: { redirectUri: string; state: string; codeChallenge: string },
   _context: PluginContext,
 ): Promise<OAuth2AuthorizationCodeBegin> {
@@ -59,12 +61,13 @@ async function begin(
     code_challenge_method: "S256",
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: "true",
   });
-  return {
+  return Promise.resolve({
     session: { createdAtMs: Date.now() },
     authorizationUrl: `${GOOGLE_AUTHORIZATION_URL}?${authParams.toString()}`,
     expiresAtMs: Date.now() + AUTHORIZATION_LIFETIME_MS,
-  };
+  });
 }
 
 async function complete(
@@ -78,10 +81,10 @@ async function complete(
     headers: {
       accept: "application/json",
       "content-type": "application/x-www-form-urlencoded",
+      "user-agent": ANTIGRAVITY_OAUTH_USER_AGENT,
     },
     body: new URLSearchParams({
       client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
       code: input.code,
       code_verifier: input.codeVerifier,
       grant_type: "authorization_code",
@@ -101,10 +104,14 @@ async function complete(
   let displayName = text(tokenBody.email);
   try {
     const userInfoResponse = await context.network.fetch(
-      "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
+      "https://www.googleapis.com/oauth2/v2/userinfo",
       {
         method: "GET",
-        headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          accept: "application/json",
+          "user-agent": ANTIGRAVITY_OAUTH_USER_AGENT,
+        },
       },
     );
     if (userInfoResponse.status >= 200 && userInfoResponse.status < 300) {
@@ -114,32 +121,23 @@ async function complete(
     // Account identity has a token fingerprint fallback.
   }
 
-  let projectId = "bamboo-precept-lgxtn";
-  let quota = null;
-  try {
-    const result = await queryAccountQuota(accessToken, context.network);
-    projectId = result.projectId;
-    quota = result.quota;
-  } catch {
-    // Quota can be refreshed after the account has been persisted.
-  }
-
+  const result = await queryAccountQuota(accessToken, context.network);
   const expiresIn = typeof tokenBody.expires_in === "number" ? tokenBody.expires_in : null;
   return [
     await credentialDraft({
       accessToken,
       refreshToken: text(tokenBody.refresh_token),
       displayName: displayName ?? "Google Antigravity",
-      projectId,
+      projectId: result.projectId,
       expiresAtMs: expiresIn === null ? null : Date.now() + expiresIn * 1000,
-      quota,
+      quota: result.quota,
     }),
   ];
 }
 
 export const antigravityAuthorizationCodeOAuth: OAuth2AuthorizationCodeAddMethod = {
   type: "oauth2.authorization-code",
-  id: "google-antigravity",
+  id: "google-oauth",
   displayName: "Sign in with Google (Antigravity)",
   description: "Authorize Antigravity with your Google Account for Gemini and Claude models.",
   begin,

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ModelSpec, ProjectedContent, ProjectedMessage, ToolDefinition};
 
-const PROVIDER_TOOL_CALL_ID_MAX_CHARS: usize = 64;
+const PROVIDER_TOOL_CALL_ID_MAX_CHARS: usize = 256;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PromptSpec {
@@ -46,5 +46,80 @@ pub(crate) fn normalize_provider_tool_call_ids(history: &mut [ProjectedMessage])
 fn truncate_tool_call_id(call_id: &mut String) {
     if let Some((end, _)) = call_id.char_indices().nth(PROVIDER_TOOL_CALL_ID_MAX_CHARS) {
         call_id.truncate(end);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::message::{Role, ToolCallContent};
+
+    #[test]
+    fn provider_tool_call_ids_are_truncated_once_for_every_provider() {
+        let call_id = format!("cursor-tool-call:{}", "x".repeat(260));
+        assert_eq!(call_id.len(), 277);
+        let expected = call_id[..256].to_string();
+        let mut history = vec![
+            ProjectedMessage {
+                message_id: "assistant".into(),
+                role: Role::Assistant,
+                content: ProjectedContent::Assistant {
+                    text: String::new(),
+                    thinking: String::new(),
+                    replay_state: None,
+                    calls: vec![ToolCallContent {
+                        index: 0,
+                        call_id: call_id.clone(),
+                        name: "Read".into(),
+                        arguments: serde_json::json!({}),
+                    }],
+                },
+            },
+            ProjectedMessage {
+                message_id: "tool".into(),
+                role: Role::User,
+                content: ProjectedContent::ToolResult(crate::model::message::ToolResultContent {
+                    call_id: call_id.clone(),
+                    name: "Read".into(),
+                    content: String::new(),
+                    is_error: false,
+                    image: None,
+                    provider_parts: Vec::new(),
+                }),
+            },
+        ];
+        normalize_provider_tool_call_ids(&mut history);
+        let ProjectedContent::Assistant { calls, .. } = &history[0].content else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(calls[0].call_id, expected);
+        let ProjectedContent::ToolResult(result) = &history[1].content else {
+            panic!("expected tool result");
+        };
+        assert_eq!(result.call_id, expected);
+    }
+
+    #[test]
+    fn truncation_respects_char_boundaries() {
+        let mut history = vec![ProjectedMessage {
+            message_id: "assistant".into(),
+            role: Role::Assistant,
+            content: ProjectedContent::Assistant {
+                text: String::new(),
+                thinking: String::new(),
+                replay_state: None,
+                calls: vec![ToolCallContent {
+                    index: 0,
+                    call_id: format!("{}界y", "x".repeat(255)),
+                    name: "Read".into(),
+                    arguments: serde_json::json!({}),
+                }],
+            },
+        }];
+        normalize_provider_tool_call_ids(&mut history);
+        let ProjectedContent::Assistant { calls, .. } = &history[0].content else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(calls[0].call_id, format!("{}界", "x".repeat(255)));
     }
 }
