@@ -716,6 +716,21 @@ fn spawn_run_request(
                 return;
             }
         };
+        if context.background_noop {
+            // Notification and summary are both committed: an at-least-once
+            // redelivery. No Run is built and no checkpoint written; it closes
+            // as Success directly, avoiding a model activation with zero new
+            // material.
+            if !generation.superseded.is_cancelled() {
+                let _ = handle
+                    .command(TransportCommand::RunFinished {
+                        generation: generation.id,
+                        finish: RunFinish::Transport(TransportFinish::Success),
+                    })
+                    .await;
+            }
+            return;
+        }
         checkpoint.configure(
             prepared.model.model_id.clone(),
             prepared.model.context_window_tokens,

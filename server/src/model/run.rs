@@ -57,4 +57,9 @@ pub struct PreparedRun {
     pub initial_messages: Vec<CanonicalMessage>,
     pub action: RunAction,
     pub base_checkpoint_id: CheckpointId,
+    /// A follow-up Run triggered by a background task completion notification.
+    /// The engine uses it to recognize concurrent redeliveries whose initial
+    /// messages are all committed: such a Run writes nothing, completes
+    /// directly, and never activates the model.
+    pub background_follow_up: bool,
 }

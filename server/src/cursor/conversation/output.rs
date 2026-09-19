@@ -755,9 +755,20 @@ impl ConversationOutput {
                                     }
                                     return Ok(RunFinish::TurnCompleted);
                                 }
-                                let checkpoints = final_checkpoint.take().ok_or_else(|| {
-                                    Error::Protocol("Completed without final state".into())
-                                })?;
+                                let Some(checkpoints) = final_checkpoint.take() else {
+                                    // A concurrently redelivered background
+                                    // follow-up is short-circuited at the engine
+                                    // entry (all initial messages already
+                                    // committed): zero writes and no final
+                                    // checkpoint, closed silently as a no-op
+                                    // Success.
+                                    if self.context.background_completion {
+                                        return Ok(RunFinish::Transport(TransportFinish::Success));
+                                    }
+                                    return Err(Error::Protocol(
+                                        "Completed without final state".into(),
+                                    ));
+                                };
                                 self.handle.emit(&events::turn_ended(turn_usage))?;
                                 self.checkpoint
                                     .publish(&self.handle, &checkpoints.staged)

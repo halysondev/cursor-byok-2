@@ -158,6 +158,13 @@ impl RunEngine {
                 if let Err(outcome) = wait_for_state_ready(ready, cancellation).await {
                     return (outcome, usage);
                 }
+            } else if prepared.background_follow_up {
+                // Concurrent-race fallback: the notification was committed by
+                // another Run and this Run has no new material. It completes
+                // with zero writes and never enters the model loop; closing is
+                // left to ConversationOutput, which silently reports Success
+                // for a background Run with no final checkpoint.
+                return (RunOutcome::Completed, usage);
             }
         }
 
@@ -739,7 +746,7 @@ impl RunEngine {
                     Err(outcome) => return (outcome, usage),
                 };
                 if !closing_insertions.is_empty() {
-                    checkpoint = match super::messages::append_batches(
+                    let inserted = match super::messages::append_batches(
                         &self.store,
                         prepared,
                         client,
@@ -749,11 +756,20 @@ impl RunEngine {
                     )
                     .await
                     {
-                        Ok((next, _)) => next,
+                        Ok((next, inserted)) => {
+                            checkpoint = next;
+                            inserted
+                        }
                         Err(outcome) => return (outcome, usage),
                     };
-                    client.phase.resume_running();
-                    continue 'model;
+                    // Same guard as the pending_insertions branch above: a
+                    // fully duplicated batch (at-least-once redelivery of
+                    // committed messages) goes straight to FinalTurn and never
+                    // activates the model.
+                    if inserted {
+                        client.phase.resume_running();
+                        continue 'model;
+                    }
                 }
                 let (barrier, ready) = CommitBarrier::before_continue();
                 if emit(
