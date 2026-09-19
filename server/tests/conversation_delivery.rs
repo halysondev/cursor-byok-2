@@ -11,8 +11,9 @@ use cursor_server::{
 };
 use prost::Message;
 use support::{
-    drive, kv_ack, registry, request_context_success, run_request, stream_close, temp_store,
-    text_response, wait_for_provider_requests, FakeProvider,
+    drive, kv_ack, registry, request_context_success, run_request, stream_close,
+    subagent_await_complete, subagent_result_success, temp_store, text_response, tool_response,
+    user_message_action, wait_for_provider_requests, FakeProvider,
 };
 
 const FOLLOW_UP: &str = "Perform any necessary follow-up actions in response to the subagent completion above. If no follow-up work is needed, no further action is required. If you mention an agent or subagent in your response, link it with the `[Name](id)` Don't use generic label such as `[agent]`, `[worker]`, or `[subagent]`.";
@@ -517,52 +518,155 @@ async fn back_to_back_duplicate_delivery_activates_the_model_once() {
 }
 
 #[tokio::test]
-async fn completion_already_consumed_by_await_does_not_start_another_parent_turn() {
+async fn completion_consumed_by_await_is_suppressed_by_the_ledger_without_client_state() {
     let (_directory, store) = temp_store().await;
     let provider = FakeProvider::default();
+    // The parent sends the subagent to the background: Task(run_in_background)'s
+    // terminal state enters the checkpoint and subagent_runs records
+    // ledger-child ← task-call.
+    provider.push(tool_response(
+        "model-task",
+        "task-call",
+        "Task",
+        r#"{"description":"Inspect","prompt":"inspect","run_in_background":true,"subagent_type":"generalPurpose"}"#,
+    ));
+    provider.push(text_response("model-tasked", "backgrounded"));
     let registry = registry(store.clone(), provider.clone());
-    let handle = registry.get_or_create("consumed-completion").await.unwrap();
-    let state = pb::ConversationStateStructure {
-        subagent_runs_by_parent_tool_call_id: HashMap::from([(
-            "task-call".into(),
-            pb::SubagentRunState {
-                parent_tool_call_id: "task-call".into(),
-                subagent_id: Some("consumed-child".into()),
-                status: pb::SubagentRunStatus::Success as i32,
-                completion_reason: Some(pb::BackgroundTaskCompletionReason::TaskFinished as i32),
-                ..Default::default()
-            },
-        )]),
-        ..Default::default()
-    };
-
-    drive_ignored_completion(
-        &handle,
-        completion_run("consumed-child", "consumed-parent-run", state),
-    )
-    .await;
-    let retry = registry
-        .get_or_create("consumed-completion-retry")
+    let first = registry.get_or_create("ledger-task-request").await.unwrap();
+    let mut output = first.subscribe();
+    first
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                "parent-conversation",
+                "ledger-task-run",
+                "test-model",
+                None,
+                user_message_action("inspect in background", "user-1", None),
+            )),
+        })
         .await
         .unwrap();
-    drive_ignored_completion(
-        &retry,
-        completion_run(
-            "consumed-child",
-            "consumed-parent-run-retry",
-            pb::ConversationStateStructure::default(),
-        ),
-    )
+    let mut seqno = 1;
+    let out = drive(&first, &mut output, &mut seqno, |exec| {
+        vec![
+            subagent_result_success(exec.id, "ledger-child"),
+            stream_close(exec.id),
+        ]
+    })
+    .await;
+    let checkpoint = out
+        .checkpoints
+        .iter()
+        .rev()
+        .find(|state| state.pending_tool_calls.is_empty())
+        .expect("settled background checkpoint")
+        .clone();
+    assert_eq!(
+        checkpoint
+            .subagent_runs_by_parent_tool_call_id
+            .get("task-call")
+            .and_then(|run| run.subagent_id.as_deref()),
+        Some("ledger-child"),
+        "the backgrounded subagent must be registered under its Task call"
+    );
+
+    // A later Run's await obtains the terminal state: the builder records the consumption in the ledger.
+    provider.push(tool_response(
+        "model-await",
+        "await-call",
+        "await",
+        r#"{"task_id":"ledger-child"}"#,
+    ));
+    provider.push(text_response("model-awaited", "consumed the result"));
+    let second = registry
+        .get_or_create("ledger-await-request")
+        .await
+        .unwrap();
+    let mut output = second.subscribe();
+    second
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                "parent-conversation",
+                "ledger-await-run",
+                "test-model",
+                Some(checkpoint),
+                user_message_action("collect it", "user-2", None),
+            )),
+        })
+        .await
+        .unwrap();
+    let mut seqno = 1;
+    drive(&second, &mut output, &mut seqno, |exec| {
+        vec![
+            subagent_await_complete(exec.id, "ledger-child"),
+            stream_close(exec.id),
+        ]
+    })
     .await;
 
-    assert!(provider.requests().is_empty());
+    // The await terminal state is registered in the ledger with identity BACKGROUND_TASK_KIND_SUBAGENT:ledger-child:task-call.
+    let ledger: Vec<(String, String)> = sqlx::query_as(
+        "SELECT task_identity, tool_call_id FROM background_consumed
+         WHERE conversation_id = 'parent-conversation'",
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        ledger,
+        [("ledger-child".to_owned(), "task-call".to_owned())]
+    );
+
+    // A late completion notification (empty state): the ledger fallback hits,
+    // so background_noop closes silently without activating the model or
+    // building a Run. prepare still fetches the request context first and
+    // closes after answering.
+    let notify = registry
+        .get_or_create("ledger-notify-request")
+        .await
+        .unwrap();
+    let mut output = notify.subscribe();
+    notify
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(completion_run(
+                "ledger-child",
+                "ledger-notify-run",
+                pb::ConversationStateStructure::default(),
+            )),
+        })
+        .await
+        .unwrap();
+    let mut seqno = 1;
+    let out = drive(&notify, &mut output, &mut seqno, |exec| {
+        assert_eq!(exec.id, 0);
+        assert!(matches!(
+            exec.message,
+            Some(pb::exec_server_message::Message::RequestContextArgs(_))
+        ));
+        vec![stream_close(0), request_context_success(0)]
+    })
+    .await;
+    assert_eq!(out.terminal, serde_json::json!({}));
+    assert!(
+        out.checkpoints.is_empty(),
+        "a noop redelivery commits nothing"
+    );
+
+    assert_eq!(
+        provider.requests().len(),
+        4,
+        "the consumed notification must not activate the model"
+    );
     let run_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM runs WHERE conversation_id = 'parent-conversation'",
     )
     .fetch_one(store.pool())
     .await
     .unwrap();
-    assert_eq!(run_count, 0);
+    assert_eq!(run_count, 2);
 }
 
 #[tokio::test]
@@ -638,20 +742,6 @@ async fn background_shell_completion_wakes_the_parent_with_the_captured_notifica
         Some("Start Python HTTP server on 9000")
     );
     assert_eq!(metadata.task_id.as_deref(), Some("977679"));
-}
-
-async fn drive_ignored_completion(handle: &TransportHandle, message: pb::AgentClientMessage) {
-    let mut output = handle.subscribe();
-    handle
-        .command(TransportCommand::Append {
-            seqno: 0,
-            message: Box::new(message),
-        })
-        .await
-        .unwrap();
-    let mut seqno = 1;
-    let out = drive(handle, &mut output, &mut seqno, |_| vec![]).await;
-    assert_eq!(out.terminal, serde_json::json!({}));
 }
 
 async fn drive_completion(

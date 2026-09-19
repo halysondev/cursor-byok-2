@@ -166,9 +166,11 @@ impl CheckpointBuilder {
         self.record_background_subagents(presentation);
         let consumed = self.record_consumed_subagent_completions(presentation);
         for (subagent_id, parent_tool_call_id) in consumed {
+            // The ledger identity matches the per-item projected event identity: redelivered notifications are suppressed by it.
             self.store
-                .record_consumed_subagent_completion(
+                .record_consumed_background_completion(
                     &self.conversation_id,
+                    pb::BackgroundTaskKind::Subagent.as_str_name(),
                     &subagent_id,
                     &parent_tool_call_id,
                 )

@@ -47,14 +47,13 @@ pub(super) struct ProjectedCompletion {
 }
 
 /// Projects completion items that are still outstanding. When everything is
-/// filtered out (progress notification, already consumed in client state, or
+/// filtered out (progress notification, already consumed in the ledger, or
 /// already covered in committed history) it returns Ok(None), marking this as
 /// a no-op redelivery.
 pub(super) fn project(
     action: &pb::BackgroundTaskCompletionAction,
     mode: i32,
-    state: Option<&pb::ConversationStateStructure>,
-    covered: &HashSet<String>,
+    suppressed: &HashSet<String>,
 ) -> Result<Option<Projection>> {
     if action.completions.is_empty() {
         return Err(Error::Protocol(
@@ -85,9 +84,6 @@ pub(super) fn project(
             // client batches them together with the real finish notification.
             continue;
         }
-        if completion_consumed(completion, state) {
-            continue;
-        }
         if completion.task_id.is_empty() || completion.title.is_empty() {
             return Err(Error::Protocol(
                 "background task completion requires task_id and title".into(),
@@ -114,7 +110,7 @@ pub(super) fn project(
                 Error::Protocol("background task completion has no tool_call_id".into())
             })?;
         let identity = format_identity(kind, agent_id.unwrap_or(&completion.task_id), tool_call_id);
-        if covered.contains(&identity) {
+        if suppressed.contains(&identity) {
             continue;
         }
         let event_id = background_event_id(&identity);
@@ -240,64 +236,6 @@ fn completion_identity(
     Some(format_identity(kind, task_identity, tool_call_id))
 }
 
-pub(super) fn fully_consumed(
-    action: &pb::BackgroundTaskCompletionAction,
-    state: Option<&pb::ConversationStateStructure>,
-) -> bool {
-    let finished = action.completions.iter().filter(|completion| {
-        completion.reason == pb::BackgroundTaskCompletionReason::TaskFinished as i32
-    });
-    let mut count = 0;
-    for completion in finished {
-        count += 1;
-        if !completion_consumed(completion, state) {
-            return false;
-        }
-    }
-    count > 0
-}
-
-fn completion_consumed(
-    completion: &pb::BackgroundTaskCompletion,
-    state: Option<&pb::ConversationStateStructure>,
-) -> bool {
-    if completion.kind != pb::BackgroundTaskKind::Subagent as i32 {
-        return false;
-    }
-    let (Some(agent_id), Some(tool_call_id), Some(state)) = (
-        completion
-            .subagent_id
-            .as_deref()
-            .filter(|id| !id.is_empty()),
-        completion
-            .tool_call_id
-            .as_deref()
-            .filter(|id| !id.is_empty()),
-        state,
-    ) else {
-        return false;
-    };
-    let Some(run) = state.subagent_runs_by_parent_tool_call_id.get(tool_call_id) else {
-        return false;
-    };
-    if run.subagent_id.as_deref() != Some(agent_id)
-        || run.completion_reason != Some(pb::BackgroundTaskCompletionReason::TaskFinished as i32)
-    {
-        return false;
-    }
-    matches!(
-        pb::SubagentRunStatus::try_from(run.status),
-        Ok(pb::SubagentRunStatus::Success
-            | pb::SubagentRunStatus::Error
-            | pb::SubagentRunStatus::Aborted)
-    ) && matches!(
-        pb::BackgroundTaskStatus::try_from(completion.status),
-        Ok(pb::BackgroundTaskStatus::Success
-            | pb::BackgroundTaskStatus::Error
-            | pb::BackgroundTaskStatus::Aborted)
-    )
-}
-
 fn status(completion: &pb::BackgroundTaskCompletion) -> Result<pb::BackgroundTaskStatus> {
     let status = pb::BackgroundTaskStatus::try_from(completion.status).map_err(|_| {
         Error::Protocol(format!(
@@ -370,7 +308,6 @@ fn status_name(status: pb::BackgroundTaskStatus) -> &'static str {
 mod tests {
     use super::*;
     use crate::model::Origin;
-    use std::collections::HashMap;
 
     fn completion(agent_id: &str, tool_call_id: &str) -> pb::BackgroundTaskCompletion {
         pb::BackgroundTaskCompletion {
@@ -389,24 +326,6 @@ mod tests {
         completions: Vec<pb::BackgroundTaskCompletion>,
     ) -> pb::BackgroundTaskCompletionAction {
         pb::BackgroundTaskCompletionAction { completions }
-    }
-
-    fn state(agent_id: &str, tool_call_id: &str) -> pb::ConversationStateStructure {
-        pb::ConversationStateStructure {
-            subagent_runs_by_parent_tool_call_id: HashMap::from([(
-                tool_call_id.into(),
-                pb::SubagentRunState {
-                    parent_tool_call_id: tool_call_id.into(),
-                    subagent_id: Some(agent_id.into()),
-                    status: pb::SubagentRunStatus::Success as i32,
-                    completion_reason: Some(
-                        pb::BackgroundTaskCompletionReason::TaskFinished as i32,
-                    ),
-                    ..Default::default()
-                },
-            )]),
-            ..Default::default()
-        }
     }
 
     fn notification(agent_id: &str, tool_call_id: &str) -> CanonicalMessage {
@@ -468,30 +387,22 @@ mod tests {
     }
 
     #[test]
-    fn terminal_result_consumed_by_await_suppresses_the_follow_up_action() {
-        let action = action(vec![completion("agent-1", "task-call-1")]);
-        let state = state("agent-1", "task-call-1");
-
-        assert!(fully_consumed(&action, Some(&state)));
-    }
-
-    #[test]
-    fn mixed_batch_keeps_only_unconsumed_completions() {
+    fn suppressed_completions_are_filtered_from_a_partial_batch() {
         let action = action(vec![
             completion("agent-1", "task-call-1"),
             completion("agent-2", "task-call-2"),
         ]);
-        let state = state("agent-1", "task-call-1");
+        // "Ledger-consumed OR history-covered" merges into a single suppression set in prepare.
+        let suppressed = HashSet::from([format_identity(
+            pb::BackgroundTaskKind::Subagent,
+            "agent-1",
+            "task-call-1",
+        )]);
 
-        assert!(!fully_consumed(&action, Some(&state)));
-        let projection = project(
-            &action,
-            pb::AgentMode::Agent as i32,
-            Some(&state),
-            &HashSet::new(),
-        )
-        .unwrap()
-        .expect("agent-2 remains");
+        let projection = project(&action, pb::AgentMode::Agent as i32, &suppressed)
+            .unwrap()
+            .expect("agent-2 remains");
+
         assert_eq!(projection.completions.len(), 1);
         let projected = &projection.completions[0];
         assert!(!projected.context.contains("agent-1"));
@@ -501,12 +412,20 @@ mod tests {
     }
 
     #[test]
-    fn consumed_terminal_result_suppresses_a_later_terminal_status() {
-        let mut action = action(vec![completion("agent-1", "task-call-1")]);
-        action.completions[0].status = pb::BackgroundTaskStatus::Error as i32;
-        let state = state("agent-1", "task-call-1");
+    fn fully_suppressed_batch_is_a_noop() {
+        let action = action(vec![completion("agent-1", "task-call-1")]);
+        let suppressed = HashSet::from([format_identity(
+            pb::BackgroundTaskKind::Subagent,
+            "agent-1",
+            "task-call-1",
+        )]);
 
-        assert!(fully_consumed(&action, Some(&state)));
+        let projection = project(&action, pb::AgentMode::Agent as i32, &suppressed).unwrap();
+
+        assert!(
+            projection.is_none(),
+            "a suppressed completion must not reproject"
+        );
     }
 
     #[test]
@@ -517,7 +436,7 @@ mod tests {
             &[notification("agent-1", "task-call-1"), assistant("a")],
         );
 
-        let projection = project(&action, pb::AgentMode::Agent as i32, None, &covered).unwrap();
+        let projection = project(&action, pb::AgentMode::Agent as i32, &covered).unwrap();
 
         assert!(
             projection.is_none(),
@@ -536,7 +455,7 @@ mod tests {
             &[notification("agent-1", "task-call-1"), assistant("a")],
         );
 
-        let projection = project(&action, pb::AgentMode::Agent as i32, None, &covered)
+        let projection = project(&action, pb::AgentMode::Agent as i32, &covered)
             .unwrap()
             .expect("agent-2 remains");
 
@@ -550,8 +469,7 @@ mod tests {
         progress.reason = pb::BackgroundTaskCompletionReason::TaskProgress as i32;
         let action = action(vec![progress]);
 
-        let projection =
-            project(&action, pb::AgentMode::Agent as i32, None, &HashSet::new()).unwrap();
+        let projection = project(&action, pb::AgentMode::Agent as i32, &HashSet::new()).unwrap();
 
         assert!(projection.is_none());
     }
