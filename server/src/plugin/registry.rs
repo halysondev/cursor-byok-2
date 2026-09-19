@@ -18,6 +18,7 @@ use super::{
         OAUTH2_AUTHORIZATION_CODE_ADD_METHOD,
     },
     oauth_callback::{self, CallbackHandle, CallbackOutcome, CallbackRequest},
+    quota,
     runtime::PluginRuntime,
     state::{now_ms, PluginStateStore, ResourceDraft, ResourcePatch, ResourceRecord, StoredModel},
     wire,
@@ -33,6 +34,8 @@ use crate::{
 
 const OAUTH_SLOW_DOWN_STEP_MS: i64 = 5_000;
 const MAX_IMPORT_DRAFTS: usize = 256;
+/// Background refresh period for plugin resource quotas.
+const QUOTA_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub struct PluginRegistry {
@@ -50,6 +53,8 @@ struct RegistryInner {
     preparation_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     pending_preparations: Mutex<HashMap<String, (ResourceRecord, serde_json::Value)>>,
     resource_operations: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    /// One-line quota summaries consumed by the Cursor model catalog, keyed by `{plugin_id}/{resource_type}`.
+    quota_summaries: RwLock<HashMap<String, String>>,
     rr_counter: std::sync::atomic::AtomicUsize,
 }
 
@@ -151,6 +156,7 @@ impl PluginRegistry {
                 preparation_locks: Mutex::new(HashMap::new()),
                 pending_preparations: Mutex::new(HashMap::new()),
                 resource_operations: Mutex::new(HashMap::new()),
+                quota_summaries: RwLock::new(HashMap::new()),
                 rr_counter: std::sync::atomic::AtomicUsize::new(0),
             }),
         })
@@ -1086,8 +1092,126 @@ impl PluginRegistry {
         let record = self
             .find_record(plugin_id, resource_type, resource_id)
             .await?;
+        self.refresh_record(&entry, &executable, resource_type, &record, cancellation)
+            .await
+    }
+
+    /// Starts the background quota refresh loop: refreshes every refreshable
+    /// resource once a minute and writes the aggregated summary into the cache
+    /// for the Cursor model catalog to append to plugin model hover remarks.
+    /// The first interval tick fires immediately; ticks while the runtime is not
+    /// ready are skipped.
+    pub fn start_quota_refresh(&self) {
+        let registry = self.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(QUOTA_REFRESH_INTERVAL);
+            loop {
+                interval.tick().await;
+                registry.refresh_quota_summaries().await;
+            }
+        });
+    }
+
+    /// The one-line quota summary consumed by the Cursor model catalog; None when
+    /// the provider has no resource type or no quota data.
+    pub async fn quota_summary(&self, plugin_id: &str, provider_id: &str) -> Option<String> {
+        let executable = self.inner.runtime.executable()?;
+        let entry = self.find_entry(&executable, plugin_id).await.ok()?;
+        let resource_type = find_provider(&entry, provider_id)
+            .ok()?
+            .resource_type
+            .as_deref()?;
+        let key = quota_key(plugin_id, resource_type);
+        self.inner
+            .quota_summaries
+            .read()
+            .await
+            .get(&key)
+            .cloned()
+    }
+
+    /// One refresh round: for each refreshable resource type, call the plugin's
+    /// refresh per account and persist the result, then aggregate the present
+    /// projection into a single summary line; the whole round replaces the cache.
+    async fn refresh_quota_summaries(&self) {
+        let Some(executable) = self.inner.runtime.executable() else {
+            return;
+        };
+        let disabled = self
+            .inner
+            .store
+            .disabled_plugin_accounts()
+            .await
+            .unwrap_or_default();
+        let mut summaries = HashMap::new();
+        for entry in self.entries(&executable).await {
+            let plugin_id = entry.manifest.id.clone();
+            for definition in &entry.definition.resources {
+                if !definition.can_refresh {
+                    continue;
+                }
+                let resource_type = definition.resource_type.as_str();
+                let records = match self.inner.state.resources(&plugin_id, resource_type).await {
+                    Ok(records) => records,
+                    Err(error) => {
+                        tracing::warn!(plugin = %plugin_id, %error, "cannot load plugin resources for quota refresh");
+                        continue;
+                    }
+                };
+                let enabled: Vec<ResourceRecord> = records
+                    .into_iter()
+                    .filter(|record| !disabled.contains(&record.id))
+                    .collect();
+                if enabled.is_empty() {
+                    continue;
+                }
+                for record in &enabled {
+                    if let Err(error) = self
+                        .refresh_record(
+                            &entry,
+                            &executable,
+                            resource_type,
+                            record,
+                            CancellationToken::new(),
+                        )
+                        .await
+                    {
+                        tracing::warn!(plugin = %plugin_id, account = %record.key, %error, "plugin quota refresh failed");
+                    }
+                }
+                // Re-read to pick up the latest private_data written by refresh.
+                let records = self
+                    .inner
+                    .state
+                    .resources(&plugin_id, resource_type)
+                    .await
+                    .unwrap_or_else(|_| enabled.clone());
+                let enabled: Vec<ResourceRecord> = records
+                    .into_iter()
+                    .filter(|record| !disabled.contains(&record.id))
+                    .collect();
+                let views = self
+                    .present_resources(&entry, &executable, definition, &enabled)
+                    .await;
+                if let Some(line) = quota::quota_line(&views) {
+                    summaries.insert(quota_key(&plugin_id, resource_type), line);
+                }
+            }
+        }
+        *self.inner.quota_summaries.write().await = summaries;
+    }
+
+    /// Calls the plugin to refresh a single resource and persists the returned patch.
+    async fn refresh_record(
+        &self,
+        entry: &PluginEntry,
+        executable: &Path,
+        resource_type: &str,
+        record: &ResourceRecord,
+        cancellation: CancellationToken,
+    ) -> Result<()> {
         let value = self
-            .worker(&entry, &executable)
+            .worker(entry, executable)
             .await
             .invoke(
                 "resource.refresh",
@@ -1101,13 +1225,13 @@ impl PluginRegistry {
         let patch: ResourcePatch = serde_json::from_value(value)?;
         self.inner
             .state
-            .apply_patch_if_current(plugin_id, resource_type, &record, patch)
+            .apply_patch_if_current(&entry.manifest.id, resource_type, record, patch)
             .await?;
         if let Some(error) = self
-            .sync_provider_models_for_resource(&entry, &executable, resource_type)
+            .sync_provider_models_for_resource(entry, executable, resource_type)
             .await
         {
-            tracing::warn!(plugin = %plugin_id, %error, "model sync after resource refresh failed");
+            tracing::warn!(plugin = %entry.manifest.id, %error, "model sync after resource refresh failed");
         }
         Ok(())
     }
@@ -1999,6 +2123,11 @@ fn affinity_index(key: &str, len: usize) -> usize {
     (hasher.finish() as usize) % len
 }
 
+/// Quota summary cache key.
+fn quota_key(plugin_id: &str, resource_type: &str) -> String {
+    format!("{plugin_id}/{resource_type}")
+}
+
 fn find_provider<'a>(entry: &'a PluginEntry, provider_id: &str) -> Result<&'a ProviderDefinition> {
     entry
         .definition
@@ -2111,6 +2240,7 @@ mod credential_lifecycle_tests {
                 preparation_locks: Default::default(),
                 pending_preparations: Default::default(),
                 resource_operations: Default::default(),
+                quota_summaries: Default::default(),
                 rr_counter: Default::default(),
             }),
         };
