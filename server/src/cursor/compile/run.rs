@@ -149,7 +149,20 @@ pub(crate) async fn prepare(
             .unwrap_or_default()
         {
             [] => None,
-            [pending] => Some(messages::decode_pending(pending)?),
+            [pending] => match messages::decode_pending(pending) {
+                Ok(round) => Some(round),
+                Err(error) => {
+                    // Client-built states can carry non-JSON pending entries;
+                    // skip instead of failing the run (the old BYOK server
+                    // ignored unparseable state blobs).
+                    tracing::debug!(
+                        %error,
+                        len = pending.len(),
+                        "skipping unparseable pending tool call entry"
+                    );
+                    None
+                }
+            },
             pending => {
                 return Err(Error::Protocol(format!(
                     "Cursor resume contains {} pending assistant messages",

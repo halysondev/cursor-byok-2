@@ -625,6 +625,28 @@ fn spawn_run_request(
             return;
         }
 
+        let mut request = request;
+        // States the client built itself (the review agent) carry content
+        // inline where server checkpoints carry blob references; persist the
+        // inline entries and swap in their digests before anything reads them.
+        if let Some(state) = request.conversation_state.as_mut() {
+            if let Err(error) =
+                crate::cursor::checkpoint::normalize_client_state(state, &dependencies.store).await
+            {
+                tracing::error!(
+                    request_id = handle.request_id(),
+                    %error,
+                    "failed to normalize client conversation state"
+                );
+                let _ = handle
+                    .command(TransportCommand::RunFinished {
+                        generation: generation.id,
+                        finish: RunFinish::Transport(TransportFinish::Failed(error)),
+                    })
+                    .await;
+                return;
+            }
+        }
         let mut checkpoint = CheckpointBuilder::new(
             dependencies.store.clone(),
             blob_sync.clone(),

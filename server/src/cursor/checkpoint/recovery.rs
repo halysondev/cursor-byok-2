@@ -45,20 +45,127 @@ impl CheckpointBuilder {
         let Some(state) = state else {
             return Ok(messages);
         };
-        for (ordinal, raw_id) in state.root_prompt_messages_json.iter().enumerate() {
-            let id = BlobId::from_bytes(raw_id)?;
-            let Some(data) = self.sync.get(&id).await? else {
-                return Err(Error::Protocol(format!(
-                    "missing message Blob {}",
-                    id.to_base64()
-                )));
+        for (ordinal, raw) in state.root_prompt_messages_json.iter().enumerate() {
+            // Server-built checkpoints echo back as 32-byte blob ids; states
+            // built by the client itself (the review agent) carry the encoded
+            // message inline — and normalization turns those into refs whose
+            // blobs hold the original bytes. One tolerant decoder covers both:
+            // newline-delimited JSON splits into one message per line, and
+            // chunks that do not decode (binary client formats) are skipped
+            // rather than failing the whole run.
+            let (data, source) = match classify_state_entry(raw)? {
+                StateEntry::Reference(id) => {
+                    let data = self.sync.get(&id).await?.ok_or_else(|| {
+                        Error::Protocol(format!("missing message Blob {}", id.to_base64()))
+                    })?;
+                    (data, id.to_base64())
+                }
+                StateEntry::Inline => (raw.to_vec(), "inline".to_owned()),
             };
-            messages.push(messages::decode(
-                &data,
-                format!("cursor-root:{}:{ordinal}", id.to_base64()),
-            )?);
+            for (line, chunk) in inline_json_lines(&data).into_iter().enumerate() {
+                match messages::decode(&chunk, format!("cursor-root:{source}:{ordinal}:{line}")) {
+                    Ok(message) => messages.push(message),
+                    Err(error) => {
+                        tracing::debug!(
+                            source = %source,
+                            ordinal,
+                            line,
+                            len = chunk.len(),
+                            %error,
+                            "skipping unparseable conversation entry"
+                        );
+                    }
+                }
+            }
         }
         Ok(messages)
+    }
+}
+
+/// Splits inline conversation-state bytes into individual JSON messages.
+/// A single JSON value is returned whole; newline-delimited JSON (several
+/// objects, one per line) is split per line. Empty lines never produce
+/// entries. JSON strings escape internal newlines, so a raw newline byte can
+/// only sit between two top-level values.
+fn inline_json_lines(data: &[u8]) -> Vec<Vec<u8>> {
+    let trimmed = trim_ascii_whitespace(data);
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    if serde_json::from_slice::<serde_json::Value>(trimmed).is_ok() {
+        return vec![trimmed.to_vec()];
+    }
+    trimmed
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !trim_ascii_whitespace(line).is_empty())
+        .map(|line| trim_ascii_whitespace(line).to_vec())
+        .collect()
+}
+
+fn trim_ascii_whitespace(data: &[u8]) -> &[u8] {
+    let start = data
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(data.len());
+    let end = data
+        .iter()
+        .rposition(|byte| !byte.is_ascii_whitespace())
+        .map_or(start, |position| position + 1);
+    &data[start..end]
+}
+
+/// Converts a client-built conversation state into server form. Entries the
+/// client carries inline (root messages, turns, todos, summaries — anything
+/// that is not already a 32-byte digest) are persisted to the blob store and
+/// replaced with their digests, so every checkpoint consumer (turns, roots,
+/// summaries, publish) can treat them uniformly as references.
+pub async fn normalize_client_state(
+    state: &mut pb::ConversationStateStructure,
+    store: &crate::store::Store,
+) -> Result<()> {
+    let repeated_fields: [&mut Vec<Vec<u8>>; 4] = [
+        &mut state.root_prompt_messages_json,
+        &mut state.turns,
+        &mut state.todos,
+        &mut state.summary_archives,
+    ];
+    for field in repeated_fields {
+        for entry in field.iter_mut() {
+            if entry.len() == 32 || entry.is_empty() {
+                continue;
+            }
+            let id = store.put_blob(entry, &[]).await?;
+            *entry = id.as_bytes().to_vec();
+        }
+    }
+    for field in [
+        &mut state.summary,
+        &mut state.plan,
+        &mut state.summary_archive,
+    ] {
+        if let Some(entry) = field.as_mut() {
+            if entry.len() != 32 && !entry.is_empty() {
+                let id = store.put_blob(entry, &[]).await?;
+                *entry = id.as_bytes().to_vec();
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One `repeated bytes` conversation-state entry: a 32-byte blob reference
+/// on server-built checkpoints, or the encoded content inline on states the
+/// client assembled itself.
+enum StateEntry {
+    Reference(BlobId),
+    Inline,
+}
+
+fn classify_state_entry(raw: &[u8]) -> Result<StateEntry> {
+    if raw.len() == 32 {
+        Ok(StateEntry::Reference(BlobId::from_bytes(raw)?))
+    } else {
+        Ok(StateEntry::Inline)
     }
 }
 
@@ -91,6 +198,113 @@ fn classify_prefetched(blob: &pb::PreFetchedBlob) -> Result<Option<Prefetched<'_
         } else {
             &blob.value
         })))
+    }
+}
+
+#[cfg(test)]
+mod inline_lines_tests {
+    use super::*;
+
+    #[test]
+    fn single_json_value_returns_one_entry() {
+        let data = br#"  {"role":"user","content":"hi"}  "#;
+        let lines = inline_json_lines(data);
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn newline_delimited_json_splits_per_line() {
+        let data = b"{\"role\":\"user\",\"content\":\"one\"}\n{\"role\":\"assistant\",\"content\":\"two\"}\n\n";
+        let lines = inline_json_lines(data);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with(b"{"));
+        assert!(lines[1].starts_with(b"{"));
+    }
+
+    #[test]
+    fn embedded_escaped_newlines_stay_inside_one_entry() {
+        let data = b"{\"role\":\"user\",\"content\":\"line1\\nline2\"}";
+        let lines = inline_json_lines(data);
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn empty_entry_returns_no_lines() {
+        assert!(inline_json_lines(b"   \n  ").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod normalize_state_tests {
+    use super::*;
+
+    async fn test_store() -> crate::store::Store {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        crate::store::Store::connect(&url).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn inline_entries_become_digests_backed_by_the_store() {
+        let store = test_store().await;
+        let inline = br#"{"role":"user","content":"review context"}"#.to_vec();
+        let digest = BlobId::digest(&inline).as_bytes().to_vec();
+        let mut state = pb::ConversationStateStructure {
+            root_prompt_messages_json: vec![inline.clone()],
+            turns: vec![vec![9u8; 28_753]],
+            todos: Vec::new(),
+            summary: Some(b"summary-json".to_vec()),
+            ..Default::default()
+        };
+        normalize_client_state(&mut state, &store).await.unwrap();
+        assert_eq!(state.root_prompt_messages_json, vec![digest.clone()]);
+        assert_eq!(state.turns[0].len(), 32);
+        assert_eq!(state.summary.as_deref().map(<[u8]>::len), Some(32));
+        // The store now backs every reference with the original content.
+        let id = BlobId::from_bytes(&state.root_prompt_messages_json[0]).unwrap();
+        assert_eq!(store.get_blob(&id).await.unwrap().unwrap(), inline);
+    }
+
+    #[tokio::test]
+    async fn existing_references_and_empty_entries_are_untouched() {
+        let store = test_store().await;
+        let reference = BlobId::digest(b"already-stored").as_bytes().to_vec();
+        let mut state = pb::ConversationStateStructure {
+            root_prompt_messages_json: vec![reference.clone(), Vec::new()],
+            ..Default::default()
+        };
+        normalize_client_state(&mut state, &store).await.unwrap();
+        assert_eq!(state.root_prompt_messages_json, vec![reference, Vec::new()]);
+    }
+}
+
+#[cfg(test)]
+mod state_entry_tests {
+    use super::*;
+
+    #[test]
+    fn thirty_two_byte_entry_is_a_blob_reference() {
+        let digest = BlobId::digest(b"payload").as_bytes().to_vec();
+        match classify_state_entry(&digest).unwrap() {
+            StateEntry::Reference(id) => assert_eq!(id.as_bytes(), digest.as_slice()),
+            StateEntry::Inline => panic!("expected Reference"),
+        }
+    }
+
+    #[test]
+    fn inline_json_entry_is_not_a_reference() {
+        // Client-built states carry the encoded message directly.
+        let inline = br#"{"role":"user","content":"review this diff"}"#;
+        assert!(matches!(
+            classify_state_entry(inline).unwrap(),
+            StateEntry::Inline
+        ));
+        // The review agent ships multi-KB inline context the same way.
+        let large = vec![b'{'; 28_753];
+        assert!(matches!(
+            classify_state_entry(&large).unwrap(),
+            StateEntry::Inline
+        ));
     }
 }
 

@@ -4,6 +4,7 @@ mod builder;
 mod derived;
 pub mod messages;
 mod recovery;
+pub(crate) use recovery::normalize_client_state;
 mod roots;
 mod steps;
 mod summary;
