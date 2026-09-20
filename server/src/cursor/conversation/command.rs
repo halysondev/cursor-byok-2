@@ -25,5 +25,9 @@ pub enum TransportCommand {
         generation: u64,
         finish: RunFinish,
     },
+    /// The SSE output stream detached early; when the session still has other
+    /// subscribers (client reconnect overlap) the runtime ignores the detach and
+    /// keeps running, otherwise it tears down as Disconnect.
+    OutputDetached,
     Disconnect,
 }
