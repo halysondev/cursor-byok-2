@@ -1122,12 +1122,7 @@ impl PluginRegistry {
             .resource_type
             .as_deref()?;
         let key = quota_key(plugin_id, resource_type);
-        self.inner
-            .quota_summaries
-            .read()
-            .await
-            .get(&key)
-            .cloned()
+        self.inner.quota_summaries.read().await.get(&key).cloned()
     }
 
     /// One refresh round: for each refreshable resource type, call the plugin's
