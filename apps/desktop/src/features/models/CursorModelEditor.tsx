@@ -57,10 +57,11 @@ export const emptyCursorModelDraft = (): CursorModelDraft => ({
   anthropicExtraParamsText: "{}",
 });
 
-export function CursorModelEditor({ draft, modelOptions, discovering, onChange, onDiscover }: {
+export function CursorModelEditor({ draft, modelOptions, discovering, editingExisting, onChange, onDiscover }: {
   draft: CursorModelDraft;
   modelOptions: string[];
   discovering: boolean;
+  editingExisting: boolean;
   onChange: (draft: CursorModelDraft) => void;
   onDiscover: () => Promise<boolean>;
 }) {
@@ -92,7 +93,9 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
     });
   };
   const numberValue = (value: string) => value === "" ? null : Math.trunc(Number(value));
-  const canDiscover = Boolean(draft.model.base_url.trim() && draft.model.api_key.trim());
+  // When editing an existing model the key field holds a masked placeholder; the server
+  // backfills the stored key for the discovery request.
+  const canDiscover = Boolean(draft.model.base_url.trim() && (draft.model.api_key.trim() || editingExisting));
   // After a preset is selected, merge that provider's known model IDs into the dropdown for easy
   // selection (models can still be discovered via "Fetch models").
   const presetModelOptions = modelPresets
@@ -168,7 +171,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
         <FormField label={draft.model.use_full_url ? "Complete request URL" : "Server address"} hint={draft.model.use_full_url ? "This address is used exactly as entered without changing or appending the request path." : "The standard endpoint path is appended automatically for the selected protocol."}> <TextInput placeholder={requestUrlPlaceholder} value={draft.model.base_url} onChange={(event) => setModel({ base_url: event.target.value })} /></FormField>
         <Checkbox checked={draft.model.use_full_url} label={"Use complete request URL"} onChange={(use_full_url) => setModel({ use_full_url })} />
       </div>
-      <FormField label="API Key" hint={"The key required to access the model service."}> <SecretTextInput placeholder="sk-xxxxxx" autoComplete="off" value={draft.model.api_key} onChange={(event) => setModel({ api_key: event.target.value })} /></FormField>
+      <FormField label="API Key" hint={editingExisting ? "The key required to access the model service; shown as a placeholder when one is already saved, enter a new value to replace it." : "The key required to access the model service."}> <SecretTextInput placeholder="sk-xxxxxx" autoComplete="off" value={draft.model.api_key} onChange={(event) => setModel({ api_key: event.target.value })} /></FormField>
 
       <FormField label={"Model name"} hint={"Enter a model ID directly or load models returned by the API."}><Combobox ref={modelCombobox} value={draft.model.model_id} options={combinedOptions} placeholder="gpt-5" append={<Button className={styles.discoverButton} disabled={discovering || !canDiscover} onClick={() => void discoverModels()}>{discovering ? "Fetching…" : "Fetch models"}</Button>} onChange={(model_id) => setModel({ model_id, display_name: draft.model.display_name || model_id })} /></FormField>
       <FormField label={"Display name"} hint={"Used only for display and does not change the model name sent to the model service."}> <TextInput placeholder={"For example: Primary model"} value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>

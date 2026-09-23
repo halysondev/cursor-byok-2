@@ -103,6 +103,8 @@ export function CursorSettingsPage() {
         type: draft.model.type,
         base_url: draft.model.base_url.trim(),
         api_key: draft.model.api_key.trim(),
+        // When editing an existing model the key field carries a redacted placeholder; the server backfills it from storage
+        model_hash: editing?.model_hash ?? null,
         custom_headers_enabled: draft.model.custom_headers_enabled,
         custom_headers,
       });
@@ -117,7 +119,7 @@ export function CursorSettingsPage() {
   };
   const persist = async (): Promise<Model | null> => {
     if (!draft) return null;
-    const input = draftInput(draft);
+    const input = draftInput(draft, editing === null);
     if (editing) return appStore.updateCursorModel(editing.model_hash, input);
     return (await appStore.createModels([input]))?.[0] ?? null;
   };
@@ -230,11 +232,10 @@ export function CursorSettingsPage() {
       displayName = `${baseName} ${suffix}`;
       suffix += 1;
     }
-    const created = await appStore.createModels([{
-      ...modelInput(model),
-      sort_order: models.length + 1,
+    const created = await appStore.duplicateCursorModel(model.model_hash, {
       display_name: displayName,
-    }]);
+      sort_order: models.length + 1,
+    });
     if (created) message("Model duplicated");
   };
   const openGroupSettings = (group: CursorModelGroup) => {
@@ -388,7 +389,7 @@ export function CursorSettingsPage() {
     </ConfirmDialog>
     <Modal fullHeight open={draft !== null || pluginEditing !== null} title={editing || pluginEditing ? "Edit model" : "Add model"} banner={draft && (editorTesting || editorTestState) ? <CursorModelTestResult state={editorTestState} testing={editorTesting} /> : undefined} busy={cursorBusy || savingAndTesting || pluginSaving} onClose={() => { if (editing && editorTesting) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); setPluginEditing(null); }} onSubmit={() => { if (draft) void save(); else pluginEditorRef.current?.save(); }} submitLabel={"Save"} secondaryAction={draft ? <button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editorTesting && editing ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? "Processing…" : editorTesting ? "Cancel test" : "Save and test"}</button> : undefined}>
       {draft && <>
-        <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} onChange={setDraft} onDiscover={discover} />
+        <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} editingExisting={editing !== null} onChange={setDraft} onDiscover={discover} />
       </>}
       {pluginEditing && <PluginModelEditor ref={pluginEditorRef} model={pluginEditing} busy={pluginSaving} onSave={(input) => void savePluginOverride(input)} />}
     </Modal>
@@ -424,7 +425,7 @@ function sharedValue(values: string[]): string | null {
   return rest.every((value) => value === first) ? first : null;
 }
 
-function draftInput(draft: CursorModelDraft): ModelInput {
+function draftInput(draft: CursorModelDraft, requireApiKey: boolean): ModelInput {
   const model = {
     ...draft.model,
     display_name: draft.model.display_name.trim(),
@@ -436,7 +437,7 @@ function draftInput(draft: CursorModelDraft): ModelInput {
     custom_headers: parseHeaders(draft.customHeadersText),
     anthropic_extra_params: parseObject(draft.anthropicExtraParamsText, "Anthropic extra parameters"),
   };
-  if (!model.display_name || !model.base_url || !model.api_key || !model.tooltip_data || !model.model_id) throw new Error("Server address or complete request URL, API Key, model name, display name, and note are required");
+  if (!model.display_name || !model.base_url || (requireApiKey && !model.api_key) || !model.tooltip_data || !model.model_id) throw new Error("Server address or complete request URL, API Key, model name, display name, and note are required");
   for (const [label, value] of [["Maximum output tokens", model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens], ["Thinking budget tokens", model.thinking_budget_tokens]] as const) {
     if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) throw new Error(`${label} must be an integer greater than 0`);
   }

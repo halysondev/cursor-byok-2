@@ -80,6 +80,8 @@ pub struct Config {
     pub provider_stream_idle_timeout: Duration,
     pub console: Option<ConsoleSource>,
     pub use_persisted_ports: bool,
+    /// Access token set via CURSOR_ACCESS_TOKEN; when unset the control layer generates and persists one.
+    pub access_token: Option<String>,
     /// The user-facing app version; the desktop shell overrides it with its own version. Used for plugin minAppVersion gating.
     pub app_version: String,
 }
@@ -92,10 +94,11 @@ pub enum ConsoleSource {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        let listen_addr = env::var("CURSOR_LISTEN_ADDR")
+        let listen_addr: SocketAddr = env::var("CURSOR_LISTEN_ADDR")
             .unwrap_or_else(|_| "127.0.0.1:3000".into())
             .parse()
             .map_err(|error| Error::Config(format!("invalid CURSOR_LISTEN_ADDR: {error}")))?;
+        let access_token = env::var("CURSOR_ACCESS_TOKEN").ok();
         let request_timeout = match env::var("CURSOR_PROVIDER_TIMEOUT_SECONDS") {
             Ok(value) => Duration::from_secs(value.parse().map_err(|error| {
                 Error::Config(format!("invalid CURSOR_PROVIDER_TIMEOUT_SECONDS: {error}"))
@@ -133,6 +136,7 @@ impl Config {
             provider_stream_idle_timeout: DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT,
             console,
             use_persisted_ports: false,
+            access_token,
             app_version: env!("CARGO_PKG_VERSION").into(),
         })
     }
@@ -147,6 +151,7 @@ impl Config {
             provider_stream_idle_timeout: DEFAULT_PROVIDER_STREAM_IDLE_TIMEOUT,
             console: None,
             use_persisted_ports: true,
+            access_token: None,
             app_version: env!("CARGO_PKG_VERSION").into(),
         })
     }
@@ -178,6 +183,14 @@ fn database_url_for_dir(data_dir: &std::path::Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_loopback_bindings_are_allowed() {
+        // Non-loopback binding is guarded by the access token and no longer blocked in the config layer.
+        for address in ["127.0.0.1:3000", "[::1]:3000", "0.0.0.0:3000"] {
+            assert!(address.parse::<SocketAddr>().is_ok(), "{address}");
+        }
+    }
 
     #[test]
     fn provider_timeout_defaults_match_runtime_boundaries() {

@@ -23,6 +23,7 @@ export type AppSnapshot = {
   cursorBusy: boolean;
   pluginRuntime: PluginRuntimeStatus | null;
   plugins: PluginDescriptor[];
+  accessTokenRequired: boolean;
 };
 
 const savedTheme = (): ThemeId => {
@@ -58,6 +59,7 @@ let snapshot: AppSnapshot = {
   cursorBusy: false,
   pluginRuntime: null,
   plugins: [],
+  accessTokenRequired: false,
 };
 
 const listeners = new Set<() => void>();
@@ -82,6 +84,10 @@ export const appStore = {
     return () => listeners.delete(listener);
   },
   getSnapshot: () => snapshot,
+
+  setAccessTokenRequired(required: boolean) {
+    update({ accessTokenRequired: required });
+  },
 
   async refresh() {
     update({ busy: true, error: null });
@@ -203,6 +209,17 @@ export const appStore = {
         models: snapshot.models.map((current) => current.model_hash === hash ? updated : current),
       });
       return updated;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    } finally { update({ cursorBusy: false }); }
+  },
+  async duplicateCursorModel(hash: string, input: { display_name: string; sort_order: number }) {
+    update({ cursorBusy: true, error: null });
+    try {
+      const created = await api.duplicateModel(hash, input);
+      await appStore.refresh();
+      return created;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
       return null;

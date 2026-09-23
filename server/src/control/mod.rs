@@ -1,5 +1,7 @@
 //! Exposes the local control API.
 
+mod auth;
+
 mod calls;
 mod harness;
 mod models;
@@ -21,9 +23,10 @@ use tower_http::{
 };
 use url::{Host, Url};
 
+pub use auth::{AccessToken, AccessTokenSource};
 pub use service::{
-    CallDetail, CallSummary, ControlService, DiscoveredModels, ModelConnectivityResult,
-    ModelDiscoveryInput, ObservabilitySettings,
+    AccessTokenView, CallDetail, CallSummary, ControlService, DiscoveredModels,
+    ModelConnectivityResult, ModelDiscoveryInput, ObservabilitySettings,
 };
 
 pub fn web_router(service: ControlService, assets: impl AsRef<std::path::Path>) -> Router {
@@ -120,6 +123,10 @@ pub fn api_router(service: ControlService) -> Router {
         .route(
             "/__byok-api__/api/models/enabled",
             put(models::set_enabled),
+        )
+        .route(
+            "/__byok-api__/api/models/{model_hash}/duplicate",
+            post(models::duplicate),
         )
         .route("/__byok-api__/api/overview", get(overview::get))
         .route(
@@ -232,6 +239,14 @@ pub fn api_router(service: ControlService) -> Router {
             get(settings::get_model_aliases).put(settings::update_model_aliases),
         )
         .route(
+            "/__byok-api__/api/settings/access-token",
+            get(settings::get_access_token),
+        )
+        .route(
+            "/__byok-api__/api/settings/access-token/regenerate",
+            post(settings::regenerate_access_token),
+        )
+        .route(
             "/__byok-api__/api/harness/cursor/status",
             get(harness::status),
         )
@@ -243,7 +258,12 @@ pub fn api_router(service: ControlService) -> Router {
             "/__byok-api__/api/harness/cursor/enabled",
             put(harness::set_enabled),
         )
-        .with_state(service)
+        .with_state(service.clone())
+        // Authentication only constrains the API; static console pages stay open and the page prompts for the token.
+        .layer(axum::middleware::from_fn_with_state(
+            service.access_token().clone(),
+            auth::require,
+        ))
         .layer(desktop_cors())
 }
 
@@ -251,7 +271,7 @@ fn desktop_cors() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| local_origin(origin)))
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers([CONTENT_TYPE])
+        .allow_headers([CONTENT_TYPE, header::AUTHORIZATION])
 }
 
 fn local_origin(origin: &HeaderValue) -> bool {
@@ -277,12 +297,8 @@ fn local_origin(origin: &HeaderValue) -> bool {
         Some(Host::Domain(host)) => {
             host.eq_ignore_ascii_case("localhost") || host.eq_ignore_ascii_case("tauri.localhost")
         }
-        Some(Host::Ipv4(address)) => {
-            address.is_loopback() || address.is_private() || address.is_link_local()
-        }
-        Some(Host::Ipv6(address)) => {
-            address.is_loopback() || address.is_unique_local() || address.is_unicast_link_local()
-        }
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
         None => false,
     }
 }
@@ -356,6 +372,7 @@ mod tests {
             plugin_runtime,
             plugins,
             clients,
+            AccessToken::new("test".into(), AccessTokenSource::Generated),
         )
         .unwrap();
         let _service = api_router(service).into_make_service();

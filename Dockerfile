@@ -38,6 +38,9 @@ RUN apt-get update && \
 COPY --from=server /tmp/cursor-server /usr/local/bin/cursor-server
 COPY --from=web /src/apps/desktop/dist/ /app/console/
 
+# The control API requires a Bearer access token for non-loopback origins: it is
+# generated, logged, and persisted to the data directory on first start (the
+# settings page can view/regenerate it); pin it with CURSOR_ACCESS_TOKEN in production.
 ENV CURSOR_LISTEN_ADDR=0.0.0.0:3000 \
     CURSOR_DATABASE_URL=sqlite:///data/cursor-server.db \
     CURSOR_CONSOLE_DIR=/app/console \

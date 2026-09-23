@@ -165,6 +165,58 @@ pub struct ModelConfig {
 }
 
 impl ModelConfig {
+    /// Control API responses expose configuration shape without returning credentials.
+    /// Saved keys and sensitive header values are replaced with the
+    /// REDACTED_SECRET placeholder (header names preserved) while
+    /// non-sensitive headers are returned verbatim for the editor round-trip;
+    /// on update a placeholder means "unchanged" (server backfills) and an
+    /// empty string means "clear".
+    pub fn redact_secrets(mut self) -> Self {
+        if !self.api_key.is_empty() {
+            self.api_key = REDACTED_SECRET.into();
+        }
+        if let Some(headers) = self.custom_headers.as_object_mut() {
+            for (name, value) in headers.iter_mut() {
+                if is_sensitive_header(name)
+                    && value.as_str().is_some_and(|value| !value.is_empty())
+                {
+                    *value = serde_json::Value::String(REDACTED_SECRET.into());
+                }
+            }
+        }
+        self
+    }
+
+    /// Restores the value as a re-submittable input; the hash and timestamps are not part of the input.
+    pub fn into_input(self) -> ModelConfigInput {
+        ModelConfigInput {
+            sort_order: self.sort_order,
+            display_name: self.display_name,
+            group_name: self.group_name,
+            model_type: self.model_type,
+            base_url: self.base_url,
+            use_full_url: self.use_full_url,
+            api_key: self.api_key,
+            tooltip_data: self.tooltip_data,
+            model_id: self.model_id,
+            reasoning_effort: self.reasoning_effort,
+            effort_options: self.effort_options,
+            context_options: self.context_options,
+            openai_endpoint: self.openai_endpoint,
+            openai_extra_params_enabled: self.openai_extra_params_enabled,
+            openai_extra_params: self.openai_extra_params,
+            custom_headers_enabled: self.custom_headers_enabled,
+            custom_headers: self.custom_headers,
+            anthropic_extra_params_enabled: self.anthropic_extra_params_enabled,
+            anthropic_extra_params: self.anthropic_extra_params,
+            context_window_tokens: self.context_window_tokens,
+            max_completion_tokens: self.max_completion_tokens,
+            anthropic_max_tokens: self.anthropic_max_tokens,
+            anthropic_thinking_effort: self.anthropic_thinking_effort,
+            thinking_budget_tokens: self.thinking_budget_tokens,
+        }
+    }
+
     pub fn provider_type(&self) -> ProviderType {
         match self.model_type {
             ModelType::Anthropic => ProviderType::Anthropic,
@@ -620,6 +672,12 @@ pub fn is_sensitive_header(name: &str) -> bool {
         "authorization" | "proxy-authorization" | "x-api-key" | "api-key" | "cookie" | "set-cookie"
     )
 }
+
+/// Redaction placeholder: the control API substitutes it for saved keys and
+/// sensitive header values. Round-tripping it verbatim means "unchanged"
+/// (server backfills) and returning an empty string means "clear"; it never
+/// represents real key content.
+pub const REDACTED_SECRET: &str = "••••••••";
 
 fn normalize_openai_endpoint(value: &str) -> Result<String> {
     match value.trim() {
