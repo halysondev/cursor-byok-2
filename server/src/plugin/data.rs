@@ -239,7 +239,7 @@ fn set_directory_permissions(_path: &Path) -> Result<()> {
     }
     #[cfg(not(unix))]
     {
-        let _ = path;
+        let _ = _path;
     }
     Ok(())
 }
@@ -252,7 +252,7 @@ fn set_file_permissions(_path: &Path) -> Result<()> {
     }
     #[cfg(not(unix))]
     {
-        let _ = path;
+        let _ = _path;
     }
     Ok(())
 }
