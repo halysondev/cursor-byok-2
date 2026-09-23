@@ -272,10 +272,41 @@ fn validate_definition(plugin_id: &str, definition: &PluginModuleDefinition) -> 
                 method.method_type.as_str(),
                 super::descriptor::OAUTH2_ADD_METHOD
                     | super::descriptor::OAUTH2_AUTHORIZATION_CODE_ADD_METHOD
+                    | super::descriptor::FORM_ADD_METHOD
             ) {
                 return Err(Error::Config(format!(
                     "plugin '{plugin_id}' add method '{}' uses unsupported type '{}'",
                     method.id, method.method_type
+                )));
+            }
+            if method.method_type == super::descriptor::FORM_ADD_METHOD {
+                if method.callback.is_some() {
+                    return Err(Error::Config(format!(
+                        "plugin '{plugin_id}' form method '{}' cannot declare callback settings",
+                        method.id
+                    )));
+                }
+                let fields = method.fields.as_deref().unwrap_or_default();
+                if fields.is_empty() {
+                    return Err(Error::Config(format!(
+                        "plugin '{plugin_id}' form method '{}' must declare fields",
+                        method.id
+                    )));
+                }
+                let mut field_ids = std::collections::HashSet::new();
+                for field in fields {
+                    validate_id(&field.id, "plugin form field id")?;
+                    if !field_ids.insert(field.id.clone()) {
+                        return Err(Error::Config(format!(
+                            "plugin '{plugin_id}' form method '{}' contains duplicate field '{}'",
+                            method.id, field.id
+                        )));
+                    }
+                }
+            } else if method.fields.is_some() {
+                return Err(Error::Config(format!(
+                    "plugin '{plugin_id}' add method '{}' cannot declare fields",
+                    method.id
                 )));
             }
             if method.method_type == super::descriptor::OAUTH2_ADD_METHOD
@@ -369,6 +400,7 @@ mod tests {
                 "dev.cursorbyok.examples.grok-auth",
                 "dev.cursorbyok.examples.kimi-auth",
                 "dev.cursorbyok.plugins.antigravity-auth",
+                "dev.cursorbyok.plugins.opencodex",
             ]
         );
     }

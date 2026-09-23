@@ -94,6 +94,9 @@ pub(super) fn validate_id(value: &str, label: &str) -> Result<()> {
 }
 
 fn validate_network_host(value: &str) -> Result<()> {
+    if value == "*" {
+        return Ok(());
+    }
     if value.is_empty()
         || value.contains('/')
         || value.contains(':')
@@ -199,6 +202,11 @@ mod tests {
         assert!(validate_network_host("https://example.com").is_err());
         assert!(validate_network_host("example.com:443").is_err());
         assert!(validate_network_host("example.com").is_ok());
+    }
+
+    #[test]
+    fn accepts_wildcard_network_host() {
+        assert!(validate_network_host("*").is_ok());
     }
 
     #[test]

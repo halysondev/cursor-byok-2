@@ -175,6 +175,15 @@ async function dispatch(message: { id: string; method: string; params?: JsonValu
         );
         break;
       }
+      case "form.submit": {
+        const support = resourceSupport(params.resourceType);
+        const method = addMethod(support, params.methodId);
+        if (method.type !== "form") {
+          throw new Error(`add method ${method.id} does not support form submission`);
+        }
+        result = await method.submit((params.values ?? {}) as never, context);
+        break;
+      }
       case "import.parse": {
         const support = resourceSupport(params.resourceType);
         if (!support.import) throw new Error(`resource ${params.resourceType} has no import`);

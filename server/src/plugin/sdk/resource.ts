@@ -156,7 +156,30 @@ export type OAuth2AuthorizationCodeBegin = {
   pollIntervalMs?: number;
 };
 
-export type ResourceAddMethod = OAuth2AddMethod | OAuth2AuthorizationCodeAddMethod;
+export type FormAddField = {
+  id: string;
+  label: LocalizedText;
+  description?: LocalizedText;
+  placeholder?: string;
+  /** Rendered as a masked input; never echoed back by the host. */
+  secret?: boolean;
+  required?: boolean;
+};
+
+/** Credential form add flow: the host renders the fields, the plugin validates and turns the values into resources. */
+export type FormAddMethod = {
+  type: "form";
+  id: string;
+  displayName: LocalizedText;
+  description?: LocalizedText;
+  fields: FormAddField[];
+  submit(values: Record<string, string>, context: PluginContext): Promise<ResourceDraft[]>;
+};
+
+export type ResourceAddMethod =
+  | OAuth2AddMethod
+  | OAuth2AuthorizationCodeAddMethod
+  | FormAddMethod;
 
 export type ResourceImportFile = {
   name: string;

@@ -20,7 +20,7 @@ import { appStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
-import { FormField, TextInput } from "../../shared/ui/FormControls";
+import { FormField, SecretTextInput, TextInput } from "../../shared/ui/FormControls";
 import { Modal } from "../../shared/ui/Modal";
 import { Switch } from "../../shared/ui/Switch";
 import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
@@ -52,14 +52,86 @@ function ResourceAddSection({ plugin, resource, onConfigured }: {
   onConfigured: () => void;
 }) {
   return <>
-    {resource.add.map((method) => <OAuthMethodCard
-      key={method.id}
-      pluginId={plugin.id}
-      resourceType={resource.type}
-      method={method}
-      onConfigured={onConfigured}
-    />)}
+    {resource.add.map((method) => method.type === "form"
+      ? <FormMethodCard
+        key={method.id}
+        pluginId={plugin.id}
+        resourceType={resource.type}
+        method={method}
+        onConfigured={onConfigured}
+      />
+      : <OAuthMethodCard
+        key={method.id}
+        pluginId={plugin.id}
+        resourceType={resource.type}
+        method={method}
+        onConfigured={onConfigured}
+      />)}
   </>;
+}
+
+function FormMethodCard({ pluginId, resourceType, method, onConfigured }: {
+  pluginId: string;
+  resourceType: string;
+  method: PluginAddMethod;
+  onConfigured: () => void;
+}) {
+  const fields = useMemo(() => method.fields ?? [], [method.fields]);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const missingRequired = fields.some((field) => field.required && !(values[field.id] ?? "").trim());
+
+  const submit = async () => {
+    setStatus("submitting");
+    setError(null);
+    try {
+      const result = await api.pluginFormSubmit(pluginId, resourceType, method.id, values);
+      await appStore.refreshPlugins();
+      if (result.modelSyncError) {
+        setStatus("error");
+        setError(`The account was saved, but model sync failed: ${result.modelSyncError}`);
+        return;
+      }
+      setStatus("success");
+      onConfigured();
+    } catch (cause) {
+      setStatus("error");
+      setError(errorText(cause));
+    }
+  };
+
+  return <Card className={styles.methodCard}>
+    <strong>{pluginText(method.displayName)}</strong>
+    {method.description && <span>{pluginText(method.description)}</span>}
+    <div className={styles.formFields}>
+      {fields.map((field) => <FormField
+        key={field.id}
+        label={pluginText(field.label)}
+        hint={field.description ? pluginText(field.description) : undefined}
+      >
+        {field.secret
+          ? <SecretTextInput
+            placeholder={field.placeholder ?? undefined}
+            value={values[field.id] ?? ""}
+            onChange={(event) => setValues((current) => ({ ...current, [field.id]: event.target.value }))}
+          />
+          : <TextInput
+            placeholder={field.placeholder ?? undefined}
+            value={values[field.id] ?? ""}
+            onChange={(event) => setValues((current) => ({ ...current, [field.id]: event.target.value }))}
+          />}
+      </FormField>)}
+    </div>
+    <div className={styles.actions}>
+      <Button variant="primary" disabled={status === "submitting" || missingRequired} onClick={() => void submit()}>
+        {status === "submitting" ? "Saving…" : "Save"}
+      </Button>
+    </div>
+    {status === "success" && <span className={styles.success}>{"Endpoint saved and the model catalog is synced."}</span>}
+    {error && <span className={styles.error} role="alert">{error}</span>}
+  </Card>;
 }
 
 function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {

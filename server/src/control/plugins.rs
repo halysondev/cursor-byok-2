@@ -40,6 +40,18 @@ pub async fn oauth_begin(
     ))
 }
 
+pub async fn form_submit(
+    State(service): State<ControlService>,
+    Path((plugin_id, resource_type, method_id)): Path<(String, String, String)>,
+    Json(values): Json<serde_json::Value>,
+) -> Result<Json<ImportResponse>> {
+    Ok(Json(
+        service
+            .plugin_form_submit(&plugin_id, &resource_type, &method_id, values)
+            .await?,
+    ))
+}
+
 pub async fn oauth_poll(
     State(service): State<ControlService>,
     Path(session_id): Path<String>,

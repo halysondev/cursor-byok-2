@@ -68,6 +68,9 @@ jobs:
       - name: Test Kimi OAuth, quota, and model behavior
         run: deno test --config server/plugins/build-in/kimi-auth/deno.json server/plugins/build-in/kimi-auth/
 
+      - name: Test OpenCodex endpoint and model behavior
+        run: deno test --config server/plugins/build-in/opencodex/deno.json server/plugins/build-in/opencodex/
+
       - name: Test plugin credential lifecycle
         env:
           DENO_TEST_EXECUTABLE: deno

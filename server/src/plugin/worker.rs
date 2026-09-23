@@ -570,7 +570,7 @@ impl HostContext {
             .host_str()
             .ok_or_else(|| Error::Config("plugin network URL has no host".into()))?
             .to_ascii_lowercase();
-        if !self.network_hosts.contains(&host) {
+        if !self.network_hosts.contains("*") && !self.network_hosts.contains(&host) {
             return Err(Error::Config(format!(
                 "plugin '{}' cannot access host '{host}'",
                 self.plugin_id
@@ -877,6 +877,17 @@ mod tests {
             invocations,
             streams: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    #[tokio::test]
+    async fn wildcard_network_host_allows_any_https_host() {
+        let (_directory, store, recorder) = recorder(false, "wildcard-plugin").await;
+        let mut host = host_with_recorder(store, recorder).await;
+        host.network_hosts = Arc::new(HashSet::from(["*".into()]));
+        let params = serde_json::json!({ "url": "https://anything.example.org/v1/models" });
+        assert!(host.request("invocation", &params).await.is_ok());
+        let params = serde_json::json!({ "url": "http://anything.example.org/v1/models" });
+        assert!(host.request("invocation", &params).await.is_err());
     }
 
     #[test]

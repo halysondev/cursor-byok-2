@@ -14,8 +14,8 @@ use super::{
     descriptor::{
         parse_model_id, PluginDescriptor, PluginModelDescriptor, PluginProviderDescriptor,
         PluginResourceDescriptor, PluginResourceView, ProviderDefinition, ResourceActionResponse,
-        ResourceActionResult, ResourceDefinition, ResourcePresentation, OAUTH2_ADD_METHOD,
-        OAUTH2_AUTHORIZATION_CODE_ADD_METHOD,
+        ResourceActionResult, ResourceDefinition, ResourcePresentation, FORM_ADD_METHOD,
+        OAUTH2_ADD_METHOD, OAUTH2_AUTHORIZATION_CODE_ADD_METHOD,
     },
     oauth_callback::{self, CallbackHandle, CallbackOutcome, CallbackRequest},
     quota,
@@ -941,6 +941,84 @@ impl PluginRegistry {
             added: outcome.added,
             updated: outcome.updated,
             warnings: parsed.warnings,
+            model_sync_error,
+        })
+    }
+
+    pub async fn submit_form(
+        &self,
+        plugin_id: &str,
+        resource_type: &str,
+        method_id: &str,
+        values: serde_json::Value,
+    ) -> Result<ImportResponse> {
+        let executable = self.executable()?;
+        let entry = self.find_entry(&executable, plugin_id).await?;
+        let resource = find_resource(&entry, resource_type)?;
+        let method = resource
+            .add
+            .iter()
+            .find(|method| method.id == method_id)
+            .ok_or_else(|| {
+                Error::Config(format!(
+                    "plugin '{plugin_id}' does not define add method '{method_id}'"
+                ))
+            })?;
+        if method.method_type != FORM_ADD_METHOD {
+            return Err(Error::Config(format!(
+                "plugin '{plugin_id}' add method '{method_id}' is not a form"
+            )));
+        }
+        let values = values
+            .as_object()
+            .ok_or_else(|| Error::Config("form values must be an object".into()))?;
+        for field in method.fields.as_deref().unwrap_or_default() {
+            if field.required
+                && values
+                    .get(&field.id)
+                    .and_then(serde_json::Value::as_str)
+                    .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(Error::Config(format!(
+                    "form field '{}' is required",
+                    field.id
+                )));
+            }
+        }
+        let value = self
+            .worker(&entry, &executable)
+            .await
+            .invoke(
+                "form.submit",
+                serde_json::json!({
+                    "resourceType": resource_type,
+                    "methodId": method.id,
+                    "values": values,
+                }),
+                CancellationToken::new(),
+            )
+            .await?;
+        let resources: Vec<ResourceDraft> = serde_json::from_value(value)?;
+        if resources.is_empty() {
+            return Err(Error::Config("form produced no resources".into()));
+        }
+        if resources.len() > MAX_IMPORT_DRAFTS {
+            return Err(Error::Config(format!(
+                "form produced more than {MAX_IMPORT_DRAFTS} resources"
+            )));
+        }
+        let outcome = self
+            .inner
+            .state
+            .upsert_resources(plugin_id, resource_type, resources)
+            .await?;
+        let model_sync_error = self
+            .sync_provider_models_for_resource(&entry, &executable, resource_type)
+            .await;
+        Ok(ImportResponse {
+            added: outcome.added,
+            updated: outcome.updated,
+            warnings: Vec::new(),
             model_sync_error,
         })
     }

@@ -73,6 +73,23 @@ pub struct AddMethodDefinition {
     pub description: LocalizedText,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callback: Option<OAuthCallbackDefinition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<FormFieldDefinition>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FormFieldDefinition {
+    pub id: String,
+    pub label: LocalizedText,
+    #[serde(default)]
+    pub description: LocalizedText,
+    #[serde(default)]
+    pub placeholder: Option<String>,
+    #[serde(default)]
+    pub secret: bool,
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -96,6 +113,7 @@ pub struct ImportDefinition {
 
 pub const OAUTH2_ADD_METHOD: &str = "oauth2.0";
 pub const OAUTH2_AUTHORIZATION_CODE_ADD_METHOD: &str = "oauth2.authorization-code";
+pub const FORM_ADD_METHOD: &str = "form";
 
 /// The full plugin view as seen by the desktop.
 #[derive(Clone, Debug, Serialize)]

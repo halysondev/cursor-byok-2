@@ -92,6 +92,16 @@ export function __descriptor(definition: ProviderPluginDefinition) {
             path: method.callback?.path ?? "/oauth-callback",
           }
           : null,
+        fields: method.type === "form"
+          ? method.fields.map((field) => ({
+            id: field.id,
+            label: field.label,
+            description: field.description ?? null,
+            placeholder: field.placeholder ?? null,
+            secret: field.secret ?? false,
+            required: field.required ?? true,
+          }))
+          : null,
       })),
       import: resource.import
         ? {
