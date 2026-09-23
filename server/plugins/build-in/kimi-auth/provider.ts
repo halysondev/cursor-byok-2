@@ -1,4 +1,4 @@
-import type { JsonValue, PluginContext } from "cursor-byok:plugin";
+import type { PluginContext } from "cursor-byok:plugin";
 import type {
   ProviderInvokeInput,
   ProviderOutput,
@@ -109,7 +109,7 @@ async function invoke(
       // A refreshed token is persisted via the patch, so the next call and the model sync use it directly.
       return data.accessToken === storedAccessToken
         ? { status: "completed" }
-        : { status: "completed", patch: { privateData: data as unknown as JsonValue } };
+        : { status: "completed", patch: { privateData: data } };
     } catch (error) {
       // On 401/403 refresh once and retry: the token may have expired or been
       // rotated by another client on the same account. HttpError is only thrown

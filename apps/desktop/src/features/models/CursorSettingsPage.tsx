@@ -103,7 +103,6 @@ export function CursorSettingsPage() {
         type: draft.model.type,
         base_url: draft.model.base_url.trim(),
         api_key: draft.model.api_key.trim(),
-        // When editing an existing model the key field carries a redacted placeholder; the server backfills it from storage
         model_hash: editing?.model_hash ?? null,
         custom_headers_enabled: draft.model.custom_headers_enabled,
         custom_headers,
