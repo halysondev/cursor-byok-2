@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_anchor_uses_full_fallback() {
+    fn missing_or_invalid_anchor_uses_full_fallback() {
         let messages = vec![CanonicalMessage::text(
             "user",
             Role::User,
@@ -506,35 +506,17 @@ mod tests {
         )];
         let projected = project_messages(&messages).unwrap();
         let prepared = prepared(200_000);
+        let expected = estimate_context_tokens(&prepared.prompt, &projected);
 
-        assert_eq!(
-            estimated_tokens(&prepared, &projected, None),
-            estimate_context_tokens(&prepared.prompt, &projected)
-        );
-    }
-
-    #[test]
-    fn invalid_anchor_message_count_uses_full_fallback() {
-        let messages = vec![CanonicalMessage::text(
-            "user",
-            Role::User,
-            Origin::Runtime,
-            "x".repeat(40_000),
-        )];
-        let projected = project_messages(&messages).unwrap();
-        let expected = estimate_context_tokens(&prepared(200_000).prompt, &projected);
-
-        assert_eq!(
-            estimated_tokens(
-                &prepared(200_000),
-                &projected,
-                Some(ContextUsageAnchor {
-                    context_input_tokens: 1,
-                    message_count: 2,
-                })
-            ),
-            expected
-        );
+        for anchor in [
+            None,
+            Some(ContextUsageAnchor {
+                context_input_tokens: 1,
+                message_count: 2,
+            }),
+        ] {
+            assert_eq!(estimated_tokens(&prepared, &projected, anchor), expected);
+        }
     }
 
     #[test]

@@ -681,57 +681,6 @@ async fn queued_user_message_after_turn_ended_starts_the_next_turn() {
 }
 
 #[tokio::test]
-async fn runtime_user_message_action_interrupts_and_continues_with_new_message() {
-    let (_directory, store) = temp_store().await;
-    let provider = FakeProvider::default();
-    provider.push_pending();
-    provider.push(text_response_with_usage(
-        "call-continued after user interruption",
-        "continued after user interruption",
-        1,
-        1,
-    ));
-    let registry = registry(store, provider.clone());
-    let handle = registry
-        .get_or_create("user-message-request")
-        .await
-        .unwrap();
-    let mut output = handle.subscribe().unwrap();
-    handle
-        .command(TransportCommand::Append {
-            seqno: 0,
-            message: Box::new(run_request(
-                "user-message-conversation",
-                "user-message-request",
-                "test-model",
-                None,
-                user_message_action("read", "cancel-user", None),
-            )),
-        })
-        .await
-        .unwrap();
-
-    let mut append_seqno = 1;
-    wait_for_provider_requests(&provider, &handle, &mut output, &mut append_seqno, 1).await;
-    handle
-        .command(TransportCommand::Append {
-            seqno: append_seqno,
-            message: Box::new(runtime_user_message()),
-        })
-        .await
-        .unwrap();
-
-    let mut append_seqno = append_seqno + 1;
-    let out = drive(&handle, &mut output, &mut append_seqno, |_| vec![]).await;
-    assert_eq!(out.terminal, serde_json::json!({}));
-    let saw_continued = text_of(&out).contains("continued after user interruption");
-    assert!(saw_continued);
-    assert_eq!(provider.requests().len(), 2);
-    let history = serde_json::to_string(&provider.requests()[1].history).unwrap();
-    assert!(history.contains("queued follow-up"));
-}
-
-#[tokio::test]
 async fn runtime_user_message_reports_delivered_and_appended() {
     // A runtime user message is queued into `pending_injections` under a
     // `user-message:{id}` key, but the commit correlation only handled the
@@ -798,6 +747,10 @@ async fn runtime_user_message_reports_delivered_and_appended() {
             "continued_output"
         ]
     );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 2);
+    let history = serde_json::to_string(&requests[1].history).unwrap();
+    assert!(history.contains("queued follow-up"));
 }
 
 #[tokio::test]
