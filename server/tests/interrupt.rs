@@ -3,7 +3,6 @@ mod support;
 
 use std::sync::Arc;
 
-use bytes::Bytes;
 use cursor_server::{
     cursor::protocol::{connect, proto::agent::v1 as pb},
     cursor::TransportCommand,
@@ -459,7 +458,7 @@ async fn registry_shutdown_cancels_runs_and_closes_run_sse_outputs() {
     let (_directory, store) = temp_store().await;
     let registry = registry(store, FakeProvider::default());
     let handle = registry.get_or_create("active-run").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
 
     registry.shutdown().await;
 
@@ -476,7 +475,7 @@ async fn client_heartbeat_returns_a_server_protocol_heartbeat() {
     let (_directory, store) = temp_store().await;
     let registry = registry(store, FakeProvider::default());
     let handle = registry.get_or_create("heartbeat-run").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
 
     cursor_server::api::cursor::bidi::append(
         &registry,
@@ -535,7 +534,7 @@ async fn runtime_cancel_action_aborts_active_exec_before_canceled_end_stream() {
     ]);
     let registry = registry(store, provider);
     let handle = registry.get_or_create("cancel-request").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -633,7 +632,7 @@ async fn queued_user_message_after_turn_ended_starts_the_next_turn() {
     ));
     let registry = registry(store, provider.clone());
     let handle = registry.get_or_create("queued-after-turn").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -697,7 +696,7 @@ async fn runtime_user_message_action_interrupts_and_continues_with_new_message()
         .get_or_create("user-message-request")
         .await
         .unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -753,7 +752,7 @@ async fn runtime_user_message_reports_delivered_and_appended() {
         .get_or_create("user-message-events-request")
         .await
         .unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -822,7 +821,7 @@ async fn tool_call_with_empty_arguments_does_not_fail_the_run() {
     ));
     let registry = registry(store, provider.clone());
     let handle = registry.get_or_create("empty-args-request").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -866,7 +865,7 @@ async fn injected_user_context_restarts_only_the_active_model_cycle() {
     ]);
     let registry = registry(store, provider.clone());
     let handle = registry.get_or_create("inject-request").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -939,7 +938,7 @@ async fn injected_user_context_aborts_pending_tools_and_ignores_late_results() {
         .get_or_create("interrupt-tool-request")
         .await
         .unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -1049,7 +1048,7 @@ async fn injected_user_context_detaches_subagents_without_cancelling_them() {
         .get_or_create("detach-subagent-request")
         .await
         .unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -1153,7 +1152,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
     let registry = registry(store, provider.clone());
 
     let handle = registry.get_or_create("seed-request").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -1177,7 +1176,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
         .get_or_create("inject-during-compaction")
         .await
         .unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     let mut compacting_request = run_request(
         "compaction-injection-conversation",
         "inject-during-compaction",
@@ -1265,7 +1264,7 @@ async fn stale_context_injection_is_rejected_without_failing_the_active_run() {
     ]);
     let registry = registry(store, provider.clone());
     let handle = registry.get_or_create("active-request").await.unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -1365,7 +1364,7 @@ async fn unsupported_runtime_action_returns_invalid_argument_for_the_active_run(
         .get_or_create("unsupported-action-request")
         .await
         .unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -1451,7 +1450,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
         .get_or_create("cancel-subagent-request")
         .await
         .unwrap();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -1560,7 +1559,7 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
 
 async fn collect_injection_lifecycle(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut cursor_server::cursor::transport::OutputReceiver,
     append_seqno: &mut i64,
     injection_id: &str,
     message_id: &str,
@@ -1606,7 +1605,7 @@ async fn collect_injection_lifecycle(
 
 async fn wait_for_exec(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut cursor_server::cursor::transport::OutputReceiver,
     append_seqno: &mut i64,
     tool: &str,
 ) -> u32 {
@@ -1634,7 +1633,7 @@ async fn wait_for_exec(
 
 async fn wait_for_turn_ended(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut cursor_server::cursor::transport::OutputReceiver,
     append_seqno: &mut i64,
 ) {
     loop {
@@ -1662,7 +1661,7 @@ async fn wait_for_turn_ended(
 
 async fn assert_transport_remains_open(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut cursor_server::cursor::transport::OutputReceiver,
     append_seqno: &mut i64,
 ) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);

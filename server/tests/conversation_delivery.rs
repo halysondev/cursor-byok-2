@@ -145,7 +145,7 @@ async fn background_completion_joins_the_active_run_instead_of_replacing_it() {
         .await
     });
     let second = registry.get_or_create("active-completion-2").await.unwrap();
-    let mut wait_output = second.subscribe();
+    let mut wait_output = second.subscribe().unwrap();
     let mut wait_seqno = 0;
     wait_for_provider_requests(&provider, &second, &mut wait_output, &mut wait_seqno, 1).await;
 
@@ -203,7 +203,7 @@ async fn retrying_one_background_completion_reuses_its_runtime_message() {
     // At-least-once redelivery after the summary committed: no model activation, no Run, silent Success.
     provider.push(text_response("model-call-2", "followed up again"));
     let second = registry.get_or_create("completion-retry-2").await.unwrap();
-    let mut output = second.subscribe();
+    let mut output = second.subscribe().unwrap();
     second
         .command(TransportCommand::Append {
             seqno: 0,
@@ -267,7 +267,7 @@ async fn redelivering_after_a_crash_reruns_the_follow_up_exactly_once() {
     provider.push_pending();
     let registry = registry(store.clone(), provider.clone());
     let first = registry.get_or_create("crash-redelivery-1").await.unwrap();
-    let mut output = first.subscribe();
+    let mut output = first.subscribe().unwrap();
     first
         .command(TransportCommand::Append {
             seqno: 0,
@@ -464,7 +464,7 @@ async fn back_to_back_duplicate_delivery_activates_the_model_once() {
         .await
     });
     let second = registry.get_or_create("dup-delivery-2").await.unwrap();
-    let mut wait_output = second.subscribe();
+    let mut wait_output = second.subscribe().unwrap();
     let mut wait_seqno = 0;
     wait_for_provider_requests(&provider, &second, &mut wait_output, &mut wait_seqno, 1).await;
 
@@ -533,7 +533,7 @@ async fn completion_consumed_by_await_is_suppressed_by_the_ledger_without_client
     provider.push(text_response("model-tasked", "backgrounded"));
     let registry = registry(store.clone(), provider.clone());
     let first = registry.get_or_create("ledger-task-request").await.unwrap();
-    let mut output = first.subscribe();
+    let mut output = first.subscribe().unwrap();
     first
         .command(TransportCommand::Append {
             seqno: 0,
@@ -583,7 +583,7 @@ async fn completion_consumed_by_await_is_suppressed_by_the_ledger_without_client
         .get_or_create("ledger-await-request")
         .await
         .unwrap();
-    let mut output = second.subscribe();
+    let mut output = second.subscribe().unwrap();
     second
         .command(TransportCommand::Append {
             seqno: 0,
@@ -627,7 +627,7 @@ async fn completion_consumed_by_await_is_suppressed_by_the_ledger_without_client
         .get_or_create("ledger-notify-request")
         .await
         .unwrap();
-    let mut output = notify.subscribe();
+    let mut output = notify.subscribe().unwrap();
     notify
         .command(TransportCommand::Append {
             seqno: 0,
@@ -748,7 +748,7 @@ async fn drive_completion(
     handle: &TransportHandle,
     message: pb::AgentClientMessage,
 ) -> (pb::ConversationStateStructure, HashMap<Vec<u8>, Vec<u8>>) {
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -778,7 +778,7 @@ async fn drive_completion(
 }
 
 async fn drive_forwarded_completion(handle: &TransportHandle, message: pb::AgentClientMessage) {
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,

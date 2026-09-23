@@ -56,7 +56,7 @@ async fn subagent_variant_slug_wins_over_echoed_parameters_for_concurrent_child_
                         value: value.into(),
                     })
                     .collect();
-            let mut output = handle.subscribe();
+            let mut output = handle.subscribe().unwrap();
             handle
                 .command(TransportCommand::Append {
                     seqno: 0,
@@ -125,7 +125,7 @@ async fn root_run_parameters_override_the_selected_variant() {
                 value: value.into(),
             })
             .collect();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
@@ -176,7 +176,7 @@ async fn subagent_parameters_apply_when_the_model_id_is_not_a_variant_slug() {
             value: value.into(),
         })
         .collect();
-    let mut output = handle.subscribe();
+    let mut output = handle.subscribe().unwrap();
     handle
         .command(TransportCommand::Append {
             seqno: 0,
