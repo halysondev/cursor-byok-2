@@ -194,7 +194,7 @@ fn write_once(
     drop(file);
     let _ = set_file_permissions(temporary);
     // Replace atomically. Never delete the last valid rotated credential before replacement.
-    std::fs::rename(temporary, target).map_err(|error| ("replace target file", error))?;
+    crate::fs::replace_file(temporary, target).map_err(|error| ("replace target file", error))?;
     let _ = set_file_permissions(target);
     Ok(())
 }
