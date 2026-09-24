@@ -7,15 +7,32 @@ import type {
 import type { PluginContext } from "cursor-byok:plugin";
 import type { ModelSnapshot } from "cursor-byok:model";
 import { HttpError, streamOpenAiResponses } from "cursor-byok:protocol/openai-responses";
-import { opencodexModels, reasoningEfforts } from "./models.ts";
+import {
+  defaultReasoningLevel,
+  opencodexModels,
+  reasoningEfforts,
+  supportsFast,
+} from "./models.ts";
 import { type EndpointData, endpointData, RESOURCE_TYPE } from "./resources.ts";
 
-/** Passes the requested effort through unless the model catalog declares a different axis. */
+/**
+ * Passes the requested effort through when the catalog axis allows it (or declares none);
+ * with no request, falls back to the model's catalog default reasoning level.
+ */
 export function selectEffort(model: ModelSnapshot, requested: string | null): string | null {
   const efforts = reasoningEfforts(model);
-  return requested !== null && (efforts.length === 0 || efforts.includes(requested))
-    ? requested
-    : null;
+  if (requested !== null) {
+    return efforts.length === 0 || efforts.includes(requested) ? requested : null;
+  }
+  return defaultReasoningLevel(model);
+}
+
+/** Clamps "fast" to "standard" when the catalog offers no fast tier for the model. */
+export function selectLatency(
+  model: ModelSnapshot,
+  requested: "fast" | "standard",
+): "fast" | "standard" {
+  return requested === "fast" && !supportsFast(model) ? "standard" : requested;
 }
 
 async function invoke(
@@ -42,6 +59,7 @@ async function invoke(
   }
   const reasoning = input.request.reasoning;
   const effort = selectEffort(input.model, reasoning.effort);
+  const latency = selectLatency(input.model, input.request.latency);
   try {
     await streamOpenAiResponses(
       {
@@ -50,6 +68,7 @@ async function invoke(
         request: {
           ...input.request,
           reasoning: { enabled: reasoning.enabled, effort },
+          latency,
         },
         headers: { authorization: `Bearer ${data.apiKey}` },
       },
