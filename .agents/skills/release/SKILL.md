@@ -9,11 +9,11 @@ Release through `.github/workflows/release.yml`. Preserve both updater formats: 
 
 ## Publication authority
 
-- Only the repository author, GitHub user `leookun`, may authorize a live release.
-- Before any live mutation, require an explicit release instruction from the author in the current task and verify `gh api user --jq .login` returns `leookun`.
-- Treat all of these as publication actions: pushing a `v*` tag, rerunning the release workflow, and publishing or editing a GitHub Release. Pushing a release commit to `main` only prepares the release and must never trigger publication by itself.
+- Only the repository author, GitHub user `halysondev` (repository `halysondev/cursor-byok-2`), may authorize a live release.
+- Before any live mutation, require an explicit release instruction from the author in the current task and verify `gh api user --jq .login` returns `halysondev`.
+- Treat all of these as publication actions: pushing a `v*` tag, rerunning the release workflow, and publishing or editing a GitHub Release. Pushing a release commit to `path-1` only prepares the release and must never trigger publication by itself.
 - Without that authorization, restrict work to inspection, local edits, validation, and a release-ready commit or branch. Do not infer publication permission from requests such as “prepare”, “check”, or “ready to release”.
-- Never print, commit, or upload `.tauri/cursor-byok.key` anywhere except the repository's `TAURI_SIGNING_PRIVATE_KEY` Actions Secret when the author explicitly requests that secret configuration.
+- Never print, commit, or upload `.tauri/cursor-byok.local.key` anywhere except the repository's `TAURI_SIGNING_PRIVATE_KEY` Actions Secret when the author explicitly requests that secret configuration.
 - Never delete, replace, or move an existing tag or published Release without separate explicit authorization.
 
 ## Version and GitHub Release policy
@@ -23,8 +23,8 @@ Release through `.github/workflows/release.yml`. Preserve both updater formats: 
 - Use standard SemVer `vMAJOR.MINOR.PATCH-beta.N` for a test tag, for example `v0.1.0-beta.1`. A beta is still a normal GitHub Release, not a GitHub prerelease. Make its title or body visibly say Beta.
 - This normal-Release rule is required because both installed update clients resolve assets through GitHub's `/releases/latest/download/` path, which excludes GitHub prereleases.
 - Windows beta builds must use the NSIS bundle. WiX/MSI rejects nonnumeric prerelease identifiers such as `beta.1`; do not weaken the SemVer tag to accommodate MSI.
-- Release only from a `v*` tag whose commit is contained in `origin/main`. The tag must equal `v<version>` from the desktop manifests.
-- Keep ordinary `main` pushes and manual workflow dispatch disabled as release triggers. The author pushes the matching tag only after the release commit is present on `origin/main`.
+- Release only from a `v*` tag whose commit is contained in `origin/path-1`. The tag must equal `v<version>` from the desktop manifests.
+- Keep ordinary `path-1` pushes and manual workflow dispatch disabled as release triggers. The author pushes the matching tag only after the release commit is present on `origin/path-1`.
 - Never republish an already published version. Select a new version instead.
 
 ## Release sources
@@ -50,9 +50,9 @@ The two listed Proto files are required build inputs and must be committed. Keep
 
 ## Prepare and validate
 
-1. Inspect `git status`, fetch `origin/main`, and preserve unrelated user changes. Confirm the release commit is based on the current remote head.
+1. Inspect `git status`, fetch `origin/path-1`, and preserve unrelated user changes. Confirm the release commit is based on the current remote head.
 2. Choose stable or beta numbering explicitly. Update the desktop version in both manifests and lockfiles; do not change the independent `cursor-server` version merely to release the desktop app.
-3. Confirm the updater public key in `tauri.conf.json` matches `.tauri/cursor-byok.key.pub` without exposing the private key.
+3. Confirm the updater public key in `tauri.conf.json` matches `.tauri/cursor-byok.local.key.pub` without exposing the private key.
 4. Confirm `TAURI_SIGNING_PRIVATE_KEY` exists in GitHub Actions. `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` must be absent when the local key has no password.
 5. Confirm neither the intended tag nor Release already exists.
 6. From `apps/desktop`, run:
@@ -69,7 +69,7 @@ The two listed Proto files are required build inputs and must be committed. Keep
 
 After the author explicitly authorizes publication:
 
-1. Commit only the reviewed release set and push it to `main`. Confirm the release commit is present in `origin/main`; this push must not start the release workflow.
+1. Commit only the reviewed release set and push it to `path-1`. Confirm the release commit is present in `origin/path-1`; this push must not start the release workflow.
 2. Create the matching tag on that commit, for example `v0.1.0-beta.1`, and push only that tag. This tag push is the publication trigger.
 3. Follow the triggered `Release desktop app` run through completion. Report the run URL and stop on failure; diagnose locally before asking the author to authorize another live attempt.
 4. Verify `v<version>` exists, is published rather than draft, has `prerelease: false`, and is the repository's Latest release.
