@@ -1098,6 +1098,8 @@ mod tests {
             display_name: "GPT-5".into(),
             description: None,
             icon: String::new(),
+            icon_dark: None,
+            icon_light: None,
             provider_type: "openai".into(),
             max_output_tokens: None,
             images: false,

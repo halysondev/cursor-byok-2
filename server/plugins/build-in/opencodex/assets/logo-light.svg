@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="512" height="512" viewBox="0 0 512 512" fill="none"
+     role="img" aria-labelledby="oc-light-title oc-light-description">
+  <title id="oc-light-title">OpenCodex logo — light theme</title>
+  <desc id="oc-light-description">A six-lobed cloud containing a terminal prompt, framed by curly braces and a broken circular orbit. Vector artwork with a transparent background.</desc>
+  <defs>
+    <path id="oc-light-cloud" d="M275.51 381.61 C265.52 382.04 255.42 380.21 246.15 376.57 C242.02 374.95 238.06 372.97 234.48 370.2 C231.24 367.69 228.31 364.53 225.02 362.78 C223.95 362.22 222.84 361.8 221.65 361.73 C220.66 361.67 219.61 361.85 218.56 362.04 C215.92 362.51 213.21 363.06 210.5 363.36 C205.47 363.93 200.45 363.63 195.51 362.81 C186.72 361.37 178.18 358.3 170.53 353.74 C156.15 345.18 144.86 331.36 139.5 315.49 C137.86 310.63 136.77 305.57 136.14 300.5 C135.44 294.89 135.3 289.26 136.48 283.46 C137.02 280.78 137.84 278.06 137.23 275.77 C136.82 274.25 135.8 272.92 134.76 271.57 C132.28 268.34 129.76 264.98 127.63 261.43 C117.34 244.28 116.09 222.51 122.49 203.62 C125.2 195.62 129.28 188.14 134.53 181.52 C139.56 175.18 145.66 169.63 152.53 165.4 C156.36 163.05 160.43 161.11 164.68 159.52 C166.95 158.67 169.27 157.92 170.7 156.29 C171.95 154.85 172.51 152.73 173.18 150.68 C175.92 142.35 180.61 135.02 186.46 128.79 C198.6 115.86 215.77 107.62 233.47 106.59 C243.3 106.01 253.3 107.66 262.54 111.01 C266.75 112.53 270.81 114.41 274.49 117.09 C277.74 119.45 280.71 122.44 283.89 124.32 C285.04 125.01 286.22 125.55 287.52 125.67 C288.44 125.75 289.43 125.62 290.43 125.46 C293.06 125.05 295.79 124.48 298.51 124.16 C303.9 123.52 309.23 123.87 314.49 124.82 C323.31 126.41 331.91 129.68 339.49 134.49 C353.82 143.58 364.5 158.19 369.24 174.5 C370.67 179.38 371.55 184.42 371.77 189.5 C372 194.85 371.48 200.24 370.73 205.51 C370.39 207.95 369.99 210.37 370.9 212.43 C371.59 213.98 373.01 215.33 374.31 216.75 C377.28 219.99 379.61 223.59 381.59 227.36 C390.71 244.74 392.34 265.85 386.15 284.47 C380.87 300.34 369.91 314.41 355.45 322.85 C351.61 325.09 347.52 326.94 343.54 328.68 C342.19 329.27 340.85 329.85 339.89 330.82 C339.24 331.49 338.76 332.33 338.35 333.24 C337.6 334.85 337.04 336.65 336.41 338.4 C333.39 346.73 328.57 354.19 322.52 360.45 C310.3 373.09 293.08 380.85 275.51 381.61Z"/>
+    <path id="oc-light-left-brace" d="M105.49 308.42 C96.92 309.95 87.58 307.17 81.47 300.97 C78.72 298.17 76.62 294.67 75.5 290.93 C74.12 286.32 74.23 281.33 74.26 276.47 C74.28 271.12 74.21 265.93 74.27 260.53 C74.34 255.69 74.51 250.7 72.47 246.5 C70.78 243.04 67.58 240.13 64.47 237.85 C63.07 236.82 61.69 235.93 60.54 234.57 C59.1 232.88 58.02 230.48 57.76 228.28 C57.25 224.01 59.82 220.49 63.08 217.54 C66.02 214.86 69.53 212.65 71.54 209.54 C73.89 205.91 74.2 201.06 74.39 196.44 C74.59 191.67 74.65 187.15 74.54 182.53 C74.41 177.57 74.08 172.49 74.9 167.52 C75.59 163.36 77.09 159.29 79.49 155.91 C83.98 149.58 91.63 145.73 99.54 144.98 C102.24 144.72 104.98 144.82 107.43 145.75 C109.15 146.4 110.73 147.45 111.53 149.08 C112.47 150.96 112.35 153.61 111.32 155.59 C110.32 157.53 108.45 158.82 106.48 159.36 C104.29 159.95 101.97 159.6 99.57 160.04 C97.56 160.41 95.49 161.33 93.99 162.6 C90.64 165.41 90.11 169.95 89.92 174.43 C89.48 184.98 90.92 195.26 89.2 205.44 C88.48 209.7 87.21 213.94 84.7 217.52 C82.6 220.51 79.64 223.04 77.67 225.74 C77.26 226.3 76.89 226.88 76.91 227.44 C76.94 228.15 77.6 228.85 78.28 229.54 C79.68 230.93 81.22 232.27 82.53 233.76 C85.3 236.88 87.07 240.63 88.2 244.53 C90.96 254.12 89.8 264.61 89.71 274.5 C89.69 277.13 89.74 279.71 90.04 282.45 C90.28 284.61 90.68 286.86 91.7 288.61 C93.73 292.1 98.23 293.58 102.59 293.96 C105.12 294.19 107.6 294.04 109.42 295.37 C110.88 296.43 111.92 298.42 112.12 300.49 C112.35 302.8 111.54 305.2 110 306.58 C108.8 307.66 107.16 308.12 105.49 308.42Z"/>
+    <path id="oc-light-right-brace" d="M413.48 308.7 C410.85 309.09 408.21 309.1 405.55 308.57 C403.6 308.19 401.64 307.52 400.45 306.15 C397.82 303.14 398.9 296.77 402.43 294.82 C404.41 293.73 407.15 294.03 409.58 293.87 C411.72 293.72 413.61 293.23 415.43 292.18 C417.11 291.2 418.73 289.75 419.63 288.05 C420.68 286.08 420.75 283.77 420.82 281.49 C420.98 276.11 421.11 270.88 421 265.54 C420.89 260.18 420.55 254.7 421.43 249.47 C422.71 241.88 426.55 234.8 432.33 229.41 C433.01 228.78 433.71 228.17 433.87 227.5 C434.06 226.71 433.5 225.84 432.73 225.04 C432.08 224.35 431.28 223.72 430.56 223.09 C429.76 222.38 429.06 221.67 428.4 220.92 C425.79 217.92 423.84 214.28 422.62 210.47 C419.56 200.94 421.06 190.4 421.02 180.49 C421.01 177.86 420.9 175.28 420.74 172.55 C420.6 170.2 420.43 167.75 419.48 165.75 C417.79 162.19 413.63 160.05 409.45 159.67 C407.01 159.44 404.57 159.81 402.59 158.82 C401.04 158.04 399.76 156.44 399.19 154.55 C398.46 152.1 398.91 149.17 400.47 147.55 C401.5 146.47 403.01 145.97 404.56 145.61 C413.15 143.63 422.73 146.26 429.03 152.46 C431.84 155.24 434 158.73 435.16 162.48 C436.65 167.28 436.49 172.51 436.49 177.54 C436.49 181.86 436.59 186.04 436.52 190.43 C436.43 195.55 436.09 200.97 437.74 205.55 C439.01 209.05 441.44 212.07 444.47 214.66 C447.42 217.17 450.95 219.28 452.43 222.46 C454.14 226.11 453.15 231.18 450.37 234.56 C447.86 237.61 443.88 239.27 441.31 242.04 C438.52 245.03 437.38 249.3 436.82 253.53 C436.12 258.89 436.37 264.18 436.59 269.49 C436.79 274.47 436.98 279.47 436.38 284.47 C435.87 288.82 434.77 293.18 432.55 296.83 C428.59 303.32 421.07 307.57 413.48 308.7Z"/>
+    <path id="oc-light-chevron" d="M198.57 291.85 C197.03 292.43 195.15 292.6 193.42 292.5 C192.01 292.41 190.71 292.15 189.48 291.6 C187.43 290.69 185.59 289.01 184.47 287.01 C183.77 285.76 183.35 284.39 182.99 282.95 C182.74 281.95 182.52 280.91 182.78 280 C182.94 279.47 183.26 278.98 183.57 278.49 C184.91 276.37 186.08 274.14 187.3 271.94 C189.64 267.72 192.16 263.63 194.51 259.42 C196.81 255.32 198.95 251.13 201.68 247.3 C202.03 246.81 202.39 246.32 202.61 245.82 C202.86 245.25 202.93 244.65 202.82 244.04 C202.63 243.04 201.97 242.01 201.36 241 C199.95 238.63 198.84 236.33 197.61 234.03 C195.38 229.85 192.75 225.65 190.51 221.51 C189.35 219.38 188.3 217.26 186.99 215.09 C185.6 212.8 183.94 210.44 183.43 207.96 C182.49 203.44 185.43 198.51 190.03 196.9 C192.78 195.94 196.12 196.17 198.58 197.49 C200.6 198.58 202.02 200.4 203.33 202.32 C206.08 206.32 208.38 210.71 210.67 215.04 C212.99 219.42 215.29 223.74 217.84 227.99 C220.35 232.17 223.1 236.29 224.46 240.96 C225.32 243.95 225.62 247.15 224.62 249.98 C223.87 252.1 222.38 254.01 221.06 256 C218.25 260.21 216.22 264.77 213.86 269.07 C211.49 273.37 208.79 277.41 206.45 281.94 C204.39 285.94 202.61 290.31 198.57 291.85Z"/>
+    <path id="oc-light-underscore" d="M317.5 291.72 C310.54 292.38 303.49 292.2 296.49 292.08 C288.82 291.96 281.21 291.91 273.5 292.18 C269.72 292.31 265.93 292.52 262.26 291.75 C259.65 291.2 257.11 290.15 255.5 288.1 C253.31 285.31 252.87 280.67 254.61 277.58 C255.93 275.23 258.54 273.79 261.23 273.08 C264.88 272.11 268.7 272.49 272.5 272.59 C276.18 272.69 279.85 272.54 283.51 272.48 C291.17 272.35 298.77 272.63 306.51 272.49 C310.22 272.42 313.96 272.26 317.48 273.27 C320.19 274.05 322.76 275.52 324.13 277.9 C325.81 280.8 325.69 285.06 323.91 288.11 C323.17 289.38 322.14 290.44 320.89 291 C319.86 291.47 318.68 291.61 317.5 291.72Z"/>
+    <linearGradient id="oc-light-surface" x1="256" y1="109" x2="256" y2="381" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c2c2c2"/>
+      <stop offset=".27" stop-color="#cccccc"/>
+      <stop offset=".6" stop-color="#d0d0d0"/>
+      <stop offset="1" stop-color="#d6d6d6"/>
+    </linearGradient>
+    <linearGradient id="oc-light-rim" x1="250" y1="107" x2="250" y2="380" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#aaaaaa"/>
+      <stop offset=".46" stop-color="#d6d6d6"/>
+      <stop offset="1" stop-color="#f4f4f4"/>
+    </linearGradient>
+    <linearGradient id="oc-light-brace-surface" x1="256" y1="145" x2="256" y2="308" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d1d1d1"/>
+      <stop offset=".5" stop-color="#d8d8d8"/>
+      <stop offset="1" stop-color="#cdcdcd"/>
+    </linearGradient>
+    <linearGradient id="oc-light-brace-rim" x1="256" y1="145" x2="256" y2="308" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#aeaeae"/>
+      <stop offset=".45" stop-color="#eeeeee"/>
+      <stop offset="1" stop-color="#f4f4f4"/>
+    </linearGradient>
+    <linearGradient id="oc-light-glyph-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#ffffff"/>
+      <stop offset=".55" stop-color="#ededed"/>
+      <stop offset="1" stop-color="#9f9f9f"/>
+    </linearGradient>
+    <filter id="oc-light-shadow" x="-15%" y="-15%" width="130%" height="135%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="3"/>
+      <feOffset dy="3"/>
+    </filter>
+    <filter id="oc-light-glyph-relief" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+      <feOffset in="SourceAlpha" dy="3.2" result="offset"/>
+      <feGaussianBlur in="offset" stdDeviation="2.1" result="blur"/>
+      <feComposite in="SourceAlpha" in2="blur" operator="out" result="edge"/>
+      <feFlood flood-color="#ffffff" result="highlight"/>
+      <feComposite in="highlight" in2="edge" operator="in" result="relief"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="relief"/></feMerge>
+    </filter>
+    <filter id="oc-light-surface-grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency=".42" numOctaves="3" seed="17" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values=".2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 0 0 0 0 1" result="monochrome"/>
+      <feComposite in="SourceGraphic" in2="monochrome" operator="arithmetic" k1="0" k2="1" k3=".05" k4="-.025" result="textured"/>
+      <feComposite in="textured" in2="SourceAlpha" operator="in"/>
+    </filter>
+    <clipPath id="oc-light-cloud-clip"><use xlink:href="#oc-light-cloud"/></clipPath>
+    <clipPath id="oc-light-braces-clip">
+      <use xlink:href="#oc-light-left-brace"/><use xlink:href="#oc-light-right-brace"/>
+    </clipPath>
+    <mask id="oc-light-opacity" x="0" y="0" width="512" height="512" maskUnits="userSpaceOnUse" style="mask-type:luminance">
+      <use xlink:href="#oc-light-cloud" fill="#ffffff" opacity=".32" filter="url(#oc-light-shadow)"/>
+      <g fill="#ffffff" opacity=".17" filter="url(#oc-light-shadow)">
+        <use xlink:href="#oc-light-left-brace"/>
+        <use xlink:href="#oc-light-right-brace"/>
+      </g>
+      <use xlink:href="#oc-light-cloud" fill="url(#oc-light-surface)" filter="url(#oc-light-surface-grain)"/>
+      <use xlink:href="#oc-light-cloud" stroke="url(#oc-light-rim)" stroke-width="6" clip-path="url(#oc-light-cloud-clip)"/>
+      <g fill="url(#oc-light-brace-surface)" stroke="url(#oc-light-brace-rim)" stroke-width="1.7" clip-path="url(#oc-light-braces-clip)">
+        <use xlink:href="#oc-light-left-brace"/>
+        <use xlink:href="#oc-light-right-brace"/>
+      </g>
+      <g stroke="#dddddd" stroke-width="4.9" stroke-linecap="round">
+        <path d="M134.9 127.2C160.1 100.5 191.5 81.9 229.1 75.4"/>
+        <path d="M281.9 75.1C319.9 81.6 353.4 101.9 377.3 131.2"/>
+        <path d="M113.8 324C139.9 371.4 181.6 403.9 230.8 412.6"/>
+        <path d="M279 413.1C329.5 405.5 369.8 375.2 395.1 328.7"/>
+      </g>
+      <g fill="#dddddd" stroke="#eeeeee" stroke-width=".8">
+        <circle cx="255.4" cy="72.8" r="7.3"/>
+        <circle cx="255.7" cy="414.2" r="7.3"/>
+      </g>
+      <g fill="#dbdbdb" filter="url(#oc-light-glyph-relief)">
+        <use xlink:href="#oc-light-chevron"/>
+        <use xlink:href="#oc-light-underscore"/>
+      </g>
+      <g stroke="url(#oc-light-glyph-rim)" stroke-width=".85">
+        <use xlink:href="#oc-light-chevron"/>
+        <use xlink:href="#oc-light-underscore"/>
+      </g>
+    </mask>
+  </defs>
+  <rect width="512" height="512" fill="#000000" mask="url(#oc-light-opacity)"/>
+</svg>

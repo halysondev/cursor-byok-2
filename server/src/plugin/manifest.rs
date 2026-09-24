@@ -22,6 +22,11 @@ pub struct PluginManifest {
     #[serde(default)]
     pub min_app_version: Option<String>,
     pub icon: String,
+    /// Optional theme-specific icon overrides; each falls back to `icon` when absent.
+    #[serde(default)]
+    pub icon_dark: Option<String>,
+    #[serde(default)]
+    pub icon_light: Option<String>,
     pub entry: String,
     #[serde(default)]
     pub permissions: PluginPermissions,
@@ -52,6 +57,9 @@ impl PluginManifest {
         }
         validate_entry_path(directory, &self.entry)?;
         validate_asset_path(directory, &self.icon)?;
+        for icon in [&self.icon_dark, &self.icon_light].into_iter().flatten() {
+            validate_asset_path(directory, icon)?;
+        }
         let mut hosts = HashSet::new();
         for host in &self.permissions.network {
             validate_network_host(host)?;

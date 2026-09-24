@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, getDisabledPluginModelIds, pluginText, type PluginDescriptor, type PluginImportFile, type PluginRuntimePhase, type PluginRuntimeStatus } from "../../shared/api";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
+import { themedIcon } from "../../shared/theme/theme";
 import { ActionMenu, type ActionMenuItem } from "../../shared/ui/ActionMenu";
 import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
@@ -132,7 +133,7 @@ function PluginCard({ plugin, onOpen }: {
   plugin: PluginDescriptor;
   onOpen: (pluginId: string, mode: "add" | "settings") => void;
 }) {
-  const { ports } = useAppStore();
+  const { ports, theme } = useAppStore();
   const message = useMessage();
   const importInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -213,7 +214,7 @@ function PluginCard({ plugin, onOpen }: {
   return (
     <Card className={styles.pluginCard}>
       <div className={styles.pluginCardTop}>
-        <img className={styles.pluginIcon} src={plugin.icon} />
+        <img className={styles.pluginIcon} src={themedIcon(plugin, theme)} />
         <div className={styles.pluginIdentity}>
           <span className={styles.pluginName}>{plugin.name}</span>
           <span className={styles.pluginId}>{subtitle}</span>

@@ -2,6 +2,8 @@ import type { IconifyIcon } from "@iconify/react/offline";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Sortable from "sortablejs";
 import type { Model, PluginDescriptor, PluginModelDescriptor } from "../../shared/api";
+import { useAppStore } from "../../shared/store/appStore";
+import { themedIcon } from "../../shared/theme/theme";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
 import { chevronDownIcon, chevronRightIcon, claudeIcon, dragIcon, editIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
@@ -26,6 +28,8 @@ export type CursorPluginModelGroup = {
   key: string;
   label: string;
   icon: string;
+  iconDark?: string;
+  iconLight?: string;
   /** True when at least one model in the group is published to Cursor. */
   enabled: boolean;
   models: PluginModelDescriptor[];
@@ -79,7 +83,7 @@ export function cursorPluginModelGroups(plugins: PluginDescriptor[]): CursorPlug
       .filter((provider) => provider.configured)
       .flatMap((provider) => provider.models);
     return models.length > 0
-      ? [{ key: plugin.id, label: plugin.name, icon: plugin.icon, enabled: models.some((model) => model.enabled), models }]
+      ? [{ key: plugin.id, label: plugin.name, icon: plugin.icon, iconDark: plugin.iconDark, iconLight: plugin.iconLight, enabled: models.some((model) => model.enabled), models }]
       : [];
   });
 }
@@ -90,6 +94,7 @@ export function groupToggleKey(source: "builtin" | "plugin", key: string) {
 }
 
 export function CursorModelCards(props: CursorModelCardsProps) {
+  const { theme } = useAppStore();
   const builtinBusy = (key: string) => props.disabled || props.busyGroupKey === groupToggleKey("builtin", key);
   const builtins = props.grouping === "flat"
     ? <div style={{ paddingTop: "10px" }}><ModelGrid {...props} sortable /></div>
@@ -122,7 +127,7 @@ export function CursorModelCards(props: CursorModelCardsProps) {
     {props.pluginGroups.map((group) => <CollapsibleGroup
       key={`${props.grouping}:${group.key}`}
       label={group.label}
-      iconSrc={group.icon}
+      iconSrc={themedIcon(group, theme)}
       defaultOpen={props.grouping === "flat"}
       enabled={group.enabled}
       busy={props.disabled || props.busyGroupKey === groupToggleKey("plugin", group.key)}

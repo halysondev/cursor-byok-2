@@ -278,6 +278,8 @@ export interface PluginModelDescriptor {
   displayName: string;
   description: string | null;
   icon: string;
+  iconDark?: string;
+  iconLight?: string;
   providerType: string;
   maxOutputTokens: number | null;
   effortOptions: string[];
@@ -313,6 +315,8 @@ export interface PluginDescriptor {
   version: string;
   author: string | null;
   icon: string;
+  iconDark?: string;
+  iconLight?: string;
   providers: PluginProviderDescriptor[];
   resources: PluginResourceDescriptor[];
 }

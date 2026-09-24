@@ -368,10 +368,17 @@ const OPENCODEX: &[(&str, &str)] = &[
         )),
     ),
     (
-        "assets/opencodex.svg",
+        "assets/logo-dark.svg",
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/plugins/build-in/opencodex/assets/opencodex.svg"
+            "/plugins/build-in/opencodex/assets/logo-dark.svg"
+        )),
+    ),
+    (
+        "assets/logo-light.svg",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/opencodex/assets/logo-light.svg"
         )),
     ),
 ];

@@ -939,6 +939,8 @@ mod tests {
             display_name: "Plugin Model".into(),
             description: None,
             icon: String::new(),
+            icon_dark: None,
+            icon_light: None,
             provider_type: "test".into(),
             max_output_tokens: None,
             images: false,

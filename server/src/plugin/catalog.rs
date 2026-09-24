@@ -9,7 +9,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 
 use super::{
     definition::PluginDefinitionLoader,
-    descriptor::PluginModuleDefinition,
+    descriptor::{PluginIcons, PluginModuleDefinition},
     manifest::{validate_id, PluginManifest},
 };
 use crate::{config, Error, Result};
@@ -30,7 +30,7 @@ pub(crate) struct PluginEntry {
     pub entry: PathBuf,
     pub manifest: PluginManifest,
     pub definition: PluginModuleDefinition,
-    pub icon: String,
+    pub icons: PluginIcons,
 }
 
 impl PluginCatalog {
@@ -113,7 +113,7 @@ impl PluginCatalog {
         plugins.into_values().collect()
     }
 
-    pub(crate) fn manifests(&self) -> Vec<(PluginManifest, String)> {
+    pub(crate) fn manifests(&self) -> Vec<(PluginManifest, PluginIcons)> {
         let mut plugins = BTreeMap::new();
         for root in &self.roots {
             let Ok(mut directories) = child_directories(root) else {
@@ -126,13 +126,13 @@ impl PluginCatalog {
                         serde_json::from_slice(&fs::read(directory.join(MANIFEST_FILE_NAME))?)?;
                     manifest.validate(&directory)?;
                     require_app_version(&manifest, &self.app_version)?;
-                    let icon = icon_data_url(&directory, &manifest.icon)?;
-                    Ok((manifest, icon))
+                    let icons = plugin_icons(&directory, &manifest)?;
+                    Ok((manifest, icons))
                 })();
-                if let Ok((manifest, icon)) = loaded {
+                if let Ok((manifest, icons)) = loaded {
                     plugins
                         .entry(manifest.id.clone())
-                        .or_insert_with(|| (manifest, icon));
+                        .or_insert_with(|| (manifest, icons));
                 }
             }
         }
@@ -178,7 +178,7 @@ async fn load_plugin(
         serde_json::from_slice(&fs::read(directory.join(MANIFEST_FILE_NAME))?)?;
     manifest.validate(directory)?;
     require_app_version(&manifest, app_version)?;
-    let icon = icon_data_url(directory, &manifest.icon)?;
+    let icons = plugin_icons(directory, &manifest)?;
     let entry = directory.join(&manifest.entry).canonicalize()?;
     let definition = loader.load(executable, directory, &entry).await?;
     validate_definition(&manifest.id, &definition)?;
@@ -187,7 +187,7 @@ async fn load_plugin(
         entry,
         manifest,
         definition,
-        icon,
+        icons,
     })
 }
 
@@ -339,6 +339,22 @@ fn validate_definition(plugin_id: &str, definition: &PluginModuleDefinition) -> 
         }
     }
     Ok(())
+}
+
+fn plugin_icons(directory: &Path, manifest: &PluginManifest) -> Result<PluginIcons> {
+    Ok(PluginIcons {
+        default: icon_data_url(directory, &manifest.icon)?,
+        dark: manifest
+            .icon_dark
+            .as_deref()
+            .map(|relative| icon_data_url(directory, relative))
+            .transpose()?,
+        light: manifest
+            .icon_light
+            .as_deref()
+            .map(|relative| icon_data_url(directory, relative))
+            .transpose()?,
+    })
 }
 
 fn icon_data_url(directory: &Path, relative: &str) -> Result<String> {

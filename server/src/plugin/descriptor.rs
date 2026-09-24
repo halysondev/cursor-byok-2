@@ -115,6 +115,14 @@ pub const OAUTH2_ADD_METHOD: &str = "oauth2.0";
 pub const OAUTH2_AUTHORIZATION_CODE_ADD_METHOD: &str = "oauth2.authorization-code";
 pub const FORM_ADD_METHOD: &str = "form";
 
+/// Resolved plugin icon data URLs; each theme variant falls back to `default` at render time.
+#[derive(Clone, Debug)]
+pub struct PluginIcons {
+    pub default: String,
+    pub dark: Option<String>,
+    pub light: Option<String>,
+}
+
 /// The full plugin view as seen by the desktop.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +132,10 @@ pub struct PluginDescriptor {
     pub version: String,
     pub author: Option<String>,
     pub icon: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_dark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_light: Option<String>,
     pub providers: Vec<PluginProviderDescriptor>,
     pub resources: Vec<PluginResourceDescriptor>,
 }
@@ -156,6 +168,10 @@ pub struct PluginModelDescriptor {
     pub display_name: String,
     pub description: Option<String>,
     pub icon: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_dark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_light: Option<String>,
     pub provider_type: String,
     pub max_output_tokens: Option<u64>,
     pub images: bool,
@@ -310,7 +326,7 @@ impl PluginModelDescriptor {
     pub fn new(
         plugin_id: &str,
         plugin_name: &str,
-        icon: &str,
+        icons: &PluginIcons,
         provider: &ProviderDefinition,
         model: &StoredModel,
     ) -> Self {
@@ -322,7 +338,9 @@ impl PluginModelDescriptor {
             model_id: model.id.clone(),
             display_name: model.display_name.clone(),
             description: model.description.clone(),
-            icon: icon.to_owned(),
+            icon: icons.default.clone(),
+            icon_dark: icons.dark.clone(),
+            icon_light: icons.light.clone(),
             provider_type: provider.provider_type.clone(),
             max_output_tokens: model.max_output_tokens,
             images: model.images,
@@ -403,7 +421,12 @@ mod tests {
             enabled: true,
             private_data: serde_json::Value::Null,
         };
-        let base = PluginModelDescriptor::new("dev.example", "Example", "", &provider, &model);
+        let icons = PluginIcons {
+            default: String::new(),
+            dark: None,
+            light: None,
+        };
+        let base = PluginModelDescriptor::new("dev.example", "Example", &icons, &provider, &model);
 
         let merged = base.clone().with_override(&PluginModelOverride {
             tooltip: Some("user tooltip".into()),

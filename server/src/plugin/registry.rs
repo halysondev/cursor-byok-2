@@ -169,12 +169,14 @@ impl PluginRegistry {
                 .catalog
                 .manifests()
                 .into_iter()
-                .map(|(manifest, icon)| PluginDescriptor {
+                .map(|(manifest, icons)| PluginDescriptor {
                     id: manifest.id,
                     name: manifest.name,
                     version: manifest.version,
                     author: manifest.author,
-                    icon,
+                    icon: icons.default,
+                    icon_dark: icons.dark,
+                    icon_light: icons.light,
                     providers: Vec::new(),
                     resources: Vec::new(),
                 })
@@ -224,7 +226,7 @@ impl PluginRegistry {
                             let descriptor = PluginModelDescriptor::new(
                                 &entry.manifest.id,
                                 &entry.manifest.name,
-                                &entry.icon,
+                                &entry.icons,
                                 provider,
                                 model,
                             );
@@ -260,7 +262,7 @@ impl PluginRegistry {
         let mut descriptor = PluginModelDescriptor::new(
             plugin_id,
             &entry.manifest.name,
-            &entry.icon,
+            &entry.icons,
             provider,
             &stored,
         );
@@ -540,7 +542,7 @@ impl PluginRegistry {
                         .unwrap_or("/oauth-callback"),
                     state.clone(),
                     entry.manifest.name.clone(),
-                    entry.icon.clone(),
+                    entry.icons.default.clone(),
                     serde_json::to_value(&resource.display_name)?,
                 )
                 .await?;
@@ -1512,7 +1514,7 @@ impl PluginRegistry {
                         let descriptor = PluginModelDescriptor::new(
                             plugin_id,
                             &entry.manifest.name,
-                            &entry.icon,
+                            &entry.icons,
                             provider,
                             model,
                         );
@@ -1551,7 +1553,9 @@ impl PluginRegistry {
             name: entry.manifest.name.clone(),
             version: entry.manifest.version.clone(),
             author: entry.manifest.author.clone(),
-            icon: entry.icon.clone(),
+            icon: entry.icons.default.clone(),
+            icon_dark: entry.icons.dark.clone(),
+            icon_light: entry.icons.light.clone(),
             providers,
             resources,
         }
