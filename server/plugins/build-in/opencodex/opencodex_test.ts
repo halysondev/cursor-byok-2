@@ -15,7 +15,7 @@ function snapshot(privateData: JsonValue): ResourceSnapshot {
   };
 }
 
-Deno.test("normalizeBaseUrl enforces https and defaults the path to /v1", () => {
+Deno.test("normalizeBaseUrl accepts http(s) and defaults the path to /v1", () => {
   assertEquals(normalizeBaseUrl("https://x.example.com"), "https://x.example.com/v1");
   assertEquals(normalizeBaseUrl("https://x.example.com/"), "https://x.example.com/v1");
   assertEquals(normalizeBaseUrl("https://x.example.com/v1/"), "https://x.example.com/v1");
@@ -27,14 +27,16 @@ Deno.test("normalizeBaseUrl enforces https and defaults the path to /v1", () => 
     normalizeBaseUrl("  https://x.example.com/v1/?q=1#frag  "),
     "https://x.example.com/v1",
   );
-  for (const bad of ["http://x.example.com", "x.example.com", "https://", ""]) {
+  assertEquals(normalizeBaseUrl("http://127.0.0.1:10100/v1"), "http://127.0.0.1:10100/v1");
+  assertEquals(normalizeBaseUrl("http://localhost:10100"), "http://localhost:10100/v1");
+  for (const bad of ["ftp://x.example.com", "x.example.com", "https://", ""]) {
     let message = "";
     try {
       normalizeBaseUrl(bad);
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
-    assert(message.includes("https://"), `expected an https error for '${bad}'`);
+    assert(message.includes("http://"), `expected a scheme error for '${bad}'`);
   }
 });
 

@@ -26,19 +26,19 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-/** Normalizes a user-entered base URL to `https://host/<path>`, defaulting the path to /v1. */
+/** Normalizes a user-entered base URL to `<scheme>://host/<path>`, defaulting the path to /v1. */
 export function normalizeBaseUrl(input: string): string {
   let url: URL;
   try {
     url = new URL(input.trim());
   } catch {
-    throw new Error("Base URL must start with https://");
+    throw new Error("Base URL must start with http:// or https://");
   }
-  if (url.protocol !== "https:" || !url.host) {
-    throw new Error("Base URL must start with https://");
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.host) {
+    throw new Error("Base URL must start with http:// or https://");
   }
   const path = url.pathname.replace(/\/+$/, "") || "/v1";
-  return `https://${url.host}${path}`;
+  return `${url.protocol}//${url.host}${path}`;
 }
 
 export function endpointData(resource: ResourceSnapshot): EndpointData {
